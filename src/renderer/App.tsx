@@ -83,6 +83,66 @@ const App: React.FC = () => {
     setQuickLookFile(null);
   }, []);
 
+  // Handle file drop
+  const handleFileDrop = useCallback(async (filePath: string) => {
+    const fileInfo = await ipcRenderer.invoke('get-file-info', filePath);
+
+    if (!fileInfo) {
+      console.log('Not a valid file');
+      return;
+    }
+
+    const { dirPath, fileName } = fileInfo;
+
+    // Load the directory
+    await loadDirectory(dirPath);
+
+    // Update history
+    const newHistory = pathHistory.slice(0, historyIndex + 1);
+    newHistory.push(dirPath);
+    setPathHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+
+    // Find and select the file
+    // We need to wait for the files to be loaded
+    setTimeout(() => {
+      setFiles((currentFiles) => {
+        const fileIndex = currentFiles.findIndex((f) => f.name === fileName);
+        if (fileIndex >= 0) {
+          setSelectedIndex(fileIndex);
+        }
+        return currentFiles;
+      });
+    }, 100);
+  }, [loadDirectory, pathHistory, historyIndex]);
+
+  // Drag and drop handlers
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        const filePath = files[0].path;
+        handleFileDrop(filePath);
+      }
+    };
+
+    document.addEventListener('dragover', handleDragOver);
+    document.addEventListener('drop', handleDrop);
+
+    return () => {
+      document.removeEventListener('dragover', handleDragOver);
+      document.removeEventListener('drop', handleDrop);
+    };
+  }, [handleFileDrop]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

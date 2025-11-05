@@ -106,3 +106,24 @@ ipcMain.handle('select-directory', async () => {
 
   return null;
 });
+
+ipcMain.handle('get-file-info', async (event, filePath: string) => {
+  try {
+    const stats = await fs.stat(filePath);
+
+    if (!stats.isFile()) {
+      return null;
+    }
+
+    const dirPath = path.dirname(filePath);
+    const fileName = path.basename(filePath);
+
+    return {
+      dirPath,
+      fileName
+    };
+  } catch (error) {
+    console.error('Error getting file info:', error);
+    return null;
+  }
+});
