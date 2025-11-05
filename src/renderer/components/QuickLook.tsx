@@ -32,6 +32,7 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
   const cleanup = useCallback(() => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
     if (audioRef.current) {
       audioRef.current.pause();
@@ -49,6 +50,18 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
       }
     });
     scheduledNotesRef.current = [];
+
+    // Close and reset audio context and instrument for fresh start
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close();
+      } catch (e) {
+        // Ignore
+      }
+      audioContextRef.current = null;
+    }
+    instrumentRef.current = null;
+    midiDataRef.current = null;
   }, []);
 
   const stopMidi = useCallback(() => {
@@ -72,13 +85,19 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
 
   const playMidi = useCallback(() => {
     if (!instrumentRef.current || !midiDataRef.current || !audioContextRef.current) {
-      console.log('Cannot play MIDI - missing resources');
+      console.log('Cannot play MIDI - missing resources', {
+        instrument: !!instrumentRef.current,
+        midi: !!midiDataRef.current,
+        audioContext: !!audioContextRef.current
+      });
       return;
     }
 
     const instrument = instrumentRef.current;
     const midi = midiDataRef.current;
     const audioContext = audioContextRef.current;
+
+    console.log('Playing MIDI:', midi.name, 'Notes:', midi.tracks.reduce((sum, t) => sum + t.notes.length, 0), 'Duration:', duration);
 
     // Collect all notes from all tracks
     const notes: any[] = [];
@@ -138,18 +157,15 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     setDuration(midi.duration);
     setTrackCount(midi.tracks.length);
 
-    // Initialize audio context and load instrument
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext();
-    }
+    // Always create fresh audio context and instrument for each file
+    audioContextRef.current = new AudioContext();
+    instrumentRef.current = await Soundfont.instrument(
+      audioContextRef.current,
+      'acoustic_grand_piano'
+    );
 
-    if (!instrumentRef.current) {
-      instrumentRef.current = await Soundfont.instrument(
-        audioContextRef.current,
-        'acoustic_grand_piano'
-      );
-    }
-  }, [file.path]);
+    console.log('Loaded MIDI file:', file.name, 'Duration:', midi.duration);
+  }, [file.path, file.name]);
 
   const loadAudioFile = useCallback(async () => {
     const buffer = await ipcRenderer.invoke('read-file', file.path);
@@ -208,11 +224,15 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     if (!loading && shouldAutoPlayRef.current) {
       shouldAutoPlayRef.current = false;
 
+      console.log('Auto-play triggered for:', file.name, 'isMidi:', file.isMidi);
+
       // Start playback
       setTimeout(() => {
         if (file.isMidi) {
+          console.log('Calling playMidi()');
           playMidi();
         } else if (file.isAudio && audioRef.current) {
+          console.log('Playing audio file');
           audioRef.current.play().catch(err => {
             console.error('Audio play error:', err);
           });
@@ -220,7 +240,7 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
         }
       }, 150);
     }
-  }, [loading, file.isMidi, file.isAudio, playMidi]);
+  }, [loading, file.isMidi, file.isAudio, file.name, playMidi]);
 
   // Navigate to next/previous file
   const navigateToFile = useCallback((direction: 'next' | 'prev') => {
