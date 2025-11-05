@@ -83,6 +83,14 @@ const App: React.FC = () => {
     setQuickLookFile(null);
   }, []);
 
+  const handleQuickLookNavigate = useCallback((index: number) => {
+    setSelectedIndex(index);
+    const file = files[index];
+    if (!file.isDirectory) {
+      setQuickLookFile(file);
+    }
+  }, [files]);
+
   // Handle file drop
   const handleFileDrop = useCallback(async (filePath: string) => {
     const fileInfo = await ipcRenderer.invoke('get-file-info', filePath);
@@ -217,7 +225,10 @@ const App: React.FC = () => {
       {quickLookFile && (
         <QuickLook
           file={quickLookFile}
+          files={files}
+          currentIndex={selectedIndex}
           onClose={closeQuickLook}
+          onNavigate={handleQuickLookNavigate}
         />
       )}
     </div>

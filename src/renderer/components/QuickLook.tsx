@@ -7,10 +7,13 @@ const { ipcRenderer } = window.require('electron');
 
 interface QuickLookProps {
   file: FileEntry;
+  files: FileEntry[];
+  currentIndex: number;
   onClose: () => void;
+  onNavigate: (index: number) => void;
 }
 
-const QuickLook: React.FC<QuickLookProps> = ({ file, onClose }) => {
+const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClose, onNavigate }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -32,6 +35,17 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, onClose }) => {
       cleanup();
     };
   }, [file]);
+
+  // Auto-play when file is loaded
+  useEffect(() => {
+    if (!loading && !isPlaying) {
+      // Small delay to ensure everything is ready
+      const timer = setTimeout(() => {
+        togglePlayPause();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
 
   const cleanup = () => {
     if (animationFrameRef.current) {
@@ -61,6 +75,8 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, onClose }) => {
 
   const loadFile = async () => {
     setLoading(true);
+    setCurrentTime(0);
+    setIsPlaying(false);
 
     try {
       if (file.isMidi) {
@@ -239,21 +255,62 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, onClose }) => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Navigate to next/previous file
+  const navigateToFile = useCallback((direction: 'next' | 'prev') => {
+    let newIndex = currentIndex;
+
+    if (direction === 'next') {
+      // Find next non-directory file
+      for (let i = currentIndex + 1; i < files.length; i++) {
+        if (!files[i].isDirectory) {
+          newIndex = i;
+          break;
+        }
+      }
+    } else {
+      // Find previous non-directory file
+      for (let i = currentIndex - 1; i >= 0; i--) {
+        if (!files[i].isDirectory) {
+          newIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (newIndex !== currentIndex) {
+      // Stop current playback before navigating
+      if (isPlaying) {
+        if (file.isMidi) {
+          stopMidi();
+        } else if (audioRef.current) {
+          audioRef.current.pause();
+        }
+      }
+      onNavigate(newIndex);
+    }
+  }, [currentIndex, files, isPlaying, file.isMidi, onNavigate]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault();
-        togglePlayPause();
+        onClose();
       } else if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        navigateToFile('next');
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        navigateToFile('prev');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, onClose]);
+  }, [onClose, navigateToFile]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -301,7 +358,7 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, onClose }) => {
         </div>
 
         <div className="quicklook-footer">
-          Press Space to play/pause • Press Esc to close
+          Press Space or Esc to close • Use ↑/↓ arrows to navigate files
         </div>
       </div>
     </div>
