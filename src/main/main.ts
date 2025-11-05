@@ -44,6 +44,11 @@ ipcMain.handle('read-directory', async (event, dirPath: string) => {
     const result = [];
 
     for (const entry of entries) {
+      // Skip hidden files and folders (those starting with .)
+      if (entry.name.startsWith('.')) {
+        continue;
+      }
+
       const fullPath = path.join(dirPath, entry.name);
 
       if (entry.isDirectory()) {
