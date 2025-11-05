@@ -27,32 +27,15 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
   const scheduledNotesRef = useRef<any[]>([]);
   const startTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number | null>(null);
+  const shouldAutoPlayRef = useRef<boolean>(true);
 
-  useEffect(() => {
-    loadFile();
-
-    return () => {
-      cleanup();
-    };
-  }, [file]);
-
-  // Auto-play when file is loaded
-  useEffect(() => {
-    if (!loading && !isPlaying) {
-      // Small delay to ensure everything is ready
-      const timer = setTimeout(() => {
-        togglePlayPause();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [loading]);
-
-  const cleanup = () => {
+  const cleanup = useCallback(() => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
     if (audioRef.current) {
       audioRef.current.pause();
+      audioRef.current.src = '';
       audioRef.current = null;
     }
     // Stop all scheduled notes
@@ -66,78 +49,32 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
       }
     });
     scheduledNotesRef.current = [];
+  }, []);
 
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-  };
-
-  const loadFile = async () => {
-    setLoading(true);
-    setCurrentTime(0);
-    setIsPlaying(false);
-
-    try {
-      if (file.isMidi) {
-        await loadMidiFile();
-      } else if (file.isAudio) {
-        await loadAudioFile();
+  const stopMidi = useCallback(() => {
+    scheduledNotesRef.current.forEach(note => {
+      if (note && note.stop) {
+        try {
+          note.stop();
+        } catch (e) {
+          // Ignore
+        }
       }
-    } catch (error) {
-      console.error('Failed to load file:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
+    scheduledNotesRef.current = [];
 
-  const loadMidiFile = async () => {
-    const buffer = await ipcRenderer.invoke('read-file', file.path);
-    const midi = new Midi(buffer);
-
-    midiDataRef.current = midi;
-    setDuration(midi.duration);
-    setTrackCount(midi.tracks.length);
-
-    // Initialize audio context and load instrument
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext();
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
     }
 
-    if (!instrumentRef.current) {
-      instrumentRef.current = await Soundfont.instrument(
-        audioContextRef.current,
-        'acoustic_grand_piano'
-      );
-    }
-  };
-
-  const loadAudioFile = async () => {
-    const buffer = await ipcRenderer.invoke('read-file', file.path);
-    const blob = new Blob([buffer]);
-    const url = URL.createObjectURL(blob);
-
-    const audio = new Audio(url);
-    audioRef.current = audio;
-
-    audio.addEventListener('loadedmetadata', () => {
-      setDuration(audio.duration);
-    });
-
-    audio.addEventListener('ended', () => {
-      setIsPlaying(false);
-      setCurrentTime(0);
-    });
-
-    audio.addEventListener('timeupdate', () => {
-      setCurrentTime(audio.currentTime);
-    });
-
-    await audio.load();
-  };
+    setIsPlaying(false);
+  }, []);
 
   const playMidi = useCallback(() => {
-    if (!instrumentRef.current || !midiDataRef.current || !audioContextRef.current) return;
+    if (!instrumentRef.current || !midiDataRef.current || !audioContextRef.current) {
+      console.log('Cannot play MIDI - missing resources');
+      return;
+    }
 
     const instrument = instrumentRef.current;
     const midi = midiDataRef.current;
@@ -193,67 +130,97 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     updateProgress();
   }, [duration]);
 
-  const stopMidi = () => {
-    scheduledNotesRef.current.forEach(note => {
-      if (note && note.stop) {
-        try {
-          note.stop();
-        } catch (e) {
-          // Ignore
-        }
-      }
+  const loadMidiFile = useCallback(async () => {
+    const buffer = await ipcRenderer.invoke('read-file', file.path);
+    const midi = new Midi(buffer);
+
+    midiDataRef.current = midi;
+    setDuration(midi.duration);
+    setTrackCount(midi.tracks.length);
+
+    // Initialize audio context and load instrument
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext();
+    }
+
+    if (!instrumentRef.current) {
+      instrumentRef.current = await Soundfont.instrument(
+        audioContextRef.current,
+        'acoustic_grand_piano'
+      );
+    }
+  }, [file.path]);
+
+  const loadAudioFile = useCallback(async () => {
+    const buffer = await ipcRenderer.invoke('read-file', file.path);
+    const blob = new Blob([buffer]);
+    const url = URL.createObjectURL(blob);
+
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
+    audio.addEventListener('loadedmetadata', () => {
+      setDuration(audio.duration);
     });
-    scheduledNotesRef.current = [];
 
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
+    audio.addEventListener('ended', () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    });
 
-    setIsPlaying(false);
-  };
+    audio.addEventListener('timeupdate', () => {
+      setCurrentTime(audio.currentTime);
+    });
 
-  const togglePlayPause = () => {
-    if (file.isMidi) {
-      if (isPlaying) {
-        stopMidi();
-      } else {
-        playMidi();
+    await audio.load();
+  }, [file.path]);
+
+  const loadFile = useCallback(async () => {
+    setLoading(true);
+    setCurrentTime(0);
+    cleanup();
+
+    try {
+      if (file.isMidi) {
+        await loadMidiFile();
+      } else if (file.isAudio) {
+        await loadAudioFile();
       }
-    } else if (file.isAudio && audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current.play();
-        setIsPlaying(true);
-      }
+    } catch (error) {
+      console.error('Failed to load file:', error);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [file, loadMidiFile, loadAudioFile, cleanup]);
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const percentage = x / rect.width;
-    const newTime = percentage * duration;
+  // Load file when component mounts or file changes
+  useEffect(() => {
+    shouldAutoPlayRef.current = true;
+    loadFile();
 
-    setCurrentTime(newTime);
+    return () => {
+      cleanup();
+    };
+  }, [file.path, loadFile, cleanup]);
 
-    if (file.isAudio && audioRef.current) {
-      audioRef.current.currentTime = newTime;
-    } else if (file.isMidi) {
-      // For MIDI, restart playback from beginning
-      // Full seek support would require more complex implementation
-      if (isPlaying) {
-        stopMidi();
-      }
+  // Auto-play after loading completes
+  useEffect(() => {
+    if (!loading && shouldAutoPlayRef.current) {
+      shouldAutoPlayRef.current = false;
+
+      // Start playback
+      setTimeout(() => {
+        if (file.isMidi) {
+          playMidi();
+        } else if (file.isAudio && audioRef.current) {
+          audioRef.current.play().catch(err => {
+            console.error('Audio play error:', err);
+          });
+          setIsPlaying(true);
+        }
+      }, 150);
     }
-  };
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, [loading, file.isMidi, file.isAudio, playMidi]);
 
   // Navigate to next/previous file
   const navigateToFile = useCallback((direction: 'next' | 'prev') => {
@@ -278,39 +245,57 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     }
 
     if (newIndex !== currentIndex) {
-      // Stop current playback before navigating
-      if (isPlaying) {
-        if (file.isMidi) {
-          stopMidi();
-        } else if (audioRef.current) {
-          audioRef.current.pause();
-        }
-      }
       onNavigate(newIndex);
     }
-  }, [currentIndex, files, isPlaying, file.isMidi, onNavigate]);
+  }, [currentIndex, files, onNavigate]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
       } else if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
+        e.stopPropagation();
         navigateToFile('next');
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
+        e.stopPropagation();
         navigateToFile('prev');
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [onClose, navigateToFile]);
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = x / rect.width;
+    const newTime = percentage * duration;
+
+    setCurrentTime(newTime);
+
+    if (file.isAudio && audioRef.current) {
+      audioRef.current.currentTime = newTime;
+    } else if (file.isMidi) {
+      // For MIDI, would need to restart from new position
+      // This is a simplified implementation
+    }
+  };
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -330,12 +315,9 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
             <div className="loading">Loading...</div>
           ) : (
             <div className="playback-controls">
-              <button
-                className="play-pause-button"
-                onClick={togglePlayPause}
-              >
-                {isPlaying ? '⏸' : '▶'}
-              </button>
+              <div className="play-indicator">
+                {isPlaying ? '⏵ Playing' : '⏸ Paused'}
+              </div>
 
               <div className="seek-bar-container">
                 <div className="time-display">

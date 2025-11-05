@@ -214,24 +214,13 @@ body {
   gap: 20px;
 }
 
-.play-pause-button {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  border: none;
-  background: #0066ff;
-  color: #fff;
-  font-size: 24px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.play-indicator {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 500;
+  color: #0066ff;
   margin: 0 auto;
-  transition: background 0.2s;
-}
-
-.play-pause-button:hover {
-  background: #0052cc;
+  padding: 10px;
 }
 
 .seek-bar-container {
