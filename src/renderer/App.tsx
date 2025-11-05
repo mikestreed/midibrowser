@@ -1,0 +1,167 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import FileList from './components/FileList';
+import QuickLook from './components/QuickLook';
+import { FileEntry } from './types';
+
+const { ipcRenderer } = window.require('electron');
+
+const App: React.FC = () => {
+  const [currentPath, setCurrentPath] = useState<string>('');
+  const [files, setFiles] = useState<FileEntry[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [quickLookFile, setQuickLookFile] = useState<FileEntry | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [pathHistory, setPathHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+
+  const loadDirectory = useCallback(async (path: string) => {
+    setLoading(true);
+    try {
+      const entries: FileEntry[] = await ipcRenderer.invoke('read-directory', path);
+
+      // Sort: directories first, then by name
+      entries.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      setFiles(entries);
+      setCurrentPath(path);
+      setSelectedIndex(-1);
+    } catch (error) {
+      console.error('Failed to load directory:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const navigateToPath = useCallback((path: string) => {
+    const newHistory = pathHistory.slice(0, historyIndex + 1);
+    newHistory.push(path);
+    setPathHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    loadDirectory(path);
+  }, [pathHistory, historyIndex, loadDirectory]);
+
+  const navigateBack = useCallback(() => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      loadDirectory(pathHistory[newIndex]);
+    }
+  }, [historyIndex, pathHistory, loadDirectory]);
+
+  const navigateForward = useCallback(() => {
+    if (historyIndex < pathHistory.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      loadDirectory(pathHistory[newIndex]);
+    }
+  }, [historyIndex, pathHistory, loadDirectory]);
+
+  const handleFileClick = useCallback((index: number) => {
+    setSelectedIndex(index);
+  }, []);
+
+  const handleFileDoubleClick = useCallback((file: FileEntry) => {
+    if (file.isDirectory) {
+      navigateToPath(file.path);
+    } else {
+      setQuickLookFile(file);
+    }
+  }, [navigateToPath]);
+
+  const handleChooseFolder = useCallback(async () => {
+    const path = await ipcRenderer.invoke('select-directory');
+    if (path) {
+      navigateToPath(path);
+    }
+  }, [navigateToPath]);
+
+  const closeQuickLook = useCallback(() => {
+    setQuickLookFile(null);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts when Quick Look is open (it handles its own)
+      if (quickLookFile) return;
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.max(-1, prev - 1));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.min(files.length - 1, prev + 1));
+      } else if (e.key === ' ' && selectedIndex >= 0) {
+        e.preventDefault();
+        const file = files[selectedIndex];
+        if (!file.isDirectory) {
+          setQuickLookFile(file);
+        }
+      } else if (e.key === 'Enter' && selectedIndex >= 0) {
+        e.preventDefault();
+        handleFileDoubleClick(files[selectedIndex]);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [files, selectedIndex, quickLookFile, handleFileDoubleClick]);
+
+  // Load home directory on startup
+  useEffect(() => {
+    (async () => {
+      const homePath = await ipcRenderer.invoke('get-home-directory');
+      navigateToPath(homePath);
+    })();
+  }, []);
+
+  return (
+    <div className="app">
+      <div className="title-bar">
+        <div className="navigation-buttons">
+          <button
+            className="nav-button"
+            onClick={navigateBack}
+            disabled={historyIndex <= 0}
+            title="Back"
+          >
+            ←
+          </button>
+          <button
+            className="nav-button"
+            onClick={navigateForward}
+            disabled={historyIndex >= pathHistory.length - 1}
+            title="Forward"
+          >
+            →
+          </button>
+        </div>
+        <div className="path-display">{currentPath}</div>
+        <button className="choose-folder-button" onClick={handleChooseFolder}>
+          Choose Folder
+        </button>
+      </div>
+
+      <FileList
+        files={files}
+        selectedIndex={selectedIndex}
+        loading={loading}
+        onFileClick={handleFileClick}
+        onFileDoubleClick={handleFileDoubleClick}
+      />
+
+      {quickLookFile && (
+        <QuickLook
+          file={quickLookFile}
+          onClose={closeQuickLook}
+        />
+      )}
+    </div>
+  );
+};
+
+export default App;
