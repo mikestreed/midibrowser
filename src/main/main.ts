@@ -153,6 +153,98 @@ ipcMain.handle('read-file', async (event, filePath: string) => {
   }
 });
 
+// Read file with retry for Dropbox online-only files
+ipcMain.handle('read-file-with-retry', async (event, filePath: string, maxRetries: number = 5) => {
+  let lastError: any;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Check file stats first
+      const stats = await fs.stat(filePath);
+
+      // If file is 0 bytes, it's likely a Dropbox online-only file
+      if (stats.size === 0 && attempt === 0) {
+        console.log(`File is 0 bytes (online-only), attempting to trigger sync: ${filePath}`);
+        // Try to read it anyway - this triggers Dropbox to download
+        try {
+          await fs.readFile(filePath);
+        } catch (e) {
+          // Expected to fail on first try
+        }
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
+      }
+
+      // If file has size, try to read it
+      if (stats.size > 0) {
+        const buffer = await fs.readFile(filePath);
+        if (buffer.length > 0) {
+          console.log(`Successfully read file on attempt ${attempt + 1}: ${filePath}`);
+          return buffer;
+        }
+      }
+
+      // If we get here, wait and retry
+      const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+      console.log(`File not ready, waiting ${delay}ms before retry ${attempt + 1}/${maxRetries}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries - 1) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+        console.log(`Error reading file, retrying in ${delay}ms: ${error}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  console.error('Failed to read file after retries:', filePath);
+  throw lastError || new Error('Failed to read file after retries');
+});
+
+// Pre-sync all MIDI files in a directory (for Dropbox)
+ipcMain.handle('presync-midi-files', async (event, dirPath: string) => {
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    const syncPromises: Promise<void>[] = [];
+
+    for (const entry of entries) {
+      if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (['.mid', '.midi'].includes(ext)) {
+          const fullPath = path.join(dirPath, entry.name);
+
+          // Trigger sync by attempting to read (don't wait for it)
+          syncPromises.push(
+            (async () => {
+              try {
+                const stats = await fs.stat(fullPath);
+                if (stats.size === 0) {
+                  console.log(`Pre-syncing MIDI file: ${entry.name}`);
+                  // Just open and close to trigger Dropbox sync
+                  await fs.readFile(fullPath);
+                }
+              } catch (e) {
+                // Ignore errors during pre-sync
+              }
+            })()
+          );
+        }
+      }
+    }
+
+    // Don't wait for all to complete, just trigger them
+    Promise.all(syncPromises).catch(() => {});
+
+    return { triggered: syncPromises.length };
+  } catch (error) {
+    console.error('Error pre-syncing MIDI files:', error);
+    return { triggered: 0 };
+  }
+});
+
 ipcMain.handle('get-home-directory', async () => {
   return app.getPath('home');
 });

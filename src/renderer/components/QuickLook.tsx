@@ -199,7 +199,8 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
   }, [duration]);
 
   const loadMidiFile = useCallback(async () => {
-    const buffer = await ipcRenderer.invoke('read-file', file.path);
+    // Use retry logic for Dropbox online-only files
+    const buffer = await ipcRenderer.invoke('read-file-with-retry', file.path, 5);
     const midi = new Midi(buffer);
 
     midiDataRef.current = midi;
@@ -461,7 +462,9 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
 
         <div className="quicklook-body">
           {loading ? (
-            <div className="loading">Loading...</div>
+            <div className="loading">
+              {file.size === 0 ? 'Syncing from cloud...' : 'Loading...'}
+            </div>
           ) : (
             <div className="playback-controls">
               <div className="play-indicator">

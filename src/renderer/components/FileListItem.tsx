@@ -27,6 +27,16 @@ const FileListItem: React.FC<FileListItemProps> = ({
 
   const loadMidiMetadata = async () => {
     try {
+      // Skip metadata loading for 0-byte files (Dropbox online-only)
+      // They'll load when the user tries to play them
+      if (file.size === 0) {
+        setMetadata({
+          duration: 0,
+          trackCount: 0
+        });
+        return;
+      }
+
       const buffer = await ipcRenderer.invoke('read-file', file.path);
       const midi = new Midi(buffer);
 
@@ -67,10 +77,10 @@ const FileListItem: React.FC<FileListItemProps> = ({
         </div>
       </td>
       <td className="file-length">
-        {metadata && formatDuration(metadata.duration)}
+        {metadata && metadata.duration > 0 ? formatDuration(metadata.duration) : (file.size === 0 ? '☁️' : '')}
       </td>
       <td className="track-count">
-        {metadata && metadata.trackCount}
+        {metadata && metadata.trackCount > 0 ? metadata.trackCount : ''}
       </td>
     </tr>
   );

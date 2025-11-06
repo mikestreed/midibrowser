@@ -69,11 +69,16 @@ body {
   font-size: 13px;
   color: #666;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   display: flex;
   align-items: center;
   -webkit-app-region: no-drag;
+  justify-content: flex-end;
+  direction: rtl;
+}
+
+.path-display > span {
+  direction: ltr;
 }
 
 .breadcrumb-root {

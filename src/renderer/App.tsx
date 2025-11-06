@@ -29,6 +29,16 @@ const App: React.FC = () => {
       setFiles(entries);
       setCurrentPath(path);
       setSelectedIndex(-1);
+
+      // Pre-sync all MIDI files in this folder (for Dropbox online-only files)
+      // This runs in the background and doesn't block
+      ipcRenderer.invoke('presync-midi-files', path).then((result: any) => {
+        if (result.triggered > 0) {
+          console.log(`Triggered sync for ${result.triggered} MIDI files`);
+        }
+      }).catch((err: any) => {
+        console.error('Error pre-syncing files:', err);
+      });
     } catch (error) {
       console.error('Failed to load directory:', error);
     } finally {
