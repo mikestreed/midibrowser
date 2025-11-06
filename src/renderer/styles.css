@@ -73,15 +73,12 @@ body {
   display: flex;
   align-items: center;
   -webkit-app-region: no-drag;
-  justify-content: flex-start;
+  justify-content: flex-end;
   min-width: 0;
 }
 
 .path-display > span {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
 .breadcrumb-root {
@@ -91,6 +88,7 @@ body {
   border-radius: 4px;
   background: #e8e8e8;
   transition: background 0.2s;
+  flex-shrink: 0;
 }
 
 .breadcrumb-root:hover {
@@ -101,6 +99,7 @@ body {
 .breadcrumb-separator {
   margin: 0 4px;
   color: #999;
+  flex-shrink: 0;
 }
 
 .breadcrumb-segment {
@@ -109,6 +108,7 @@ body {
   border-radius: 4px;
   background: #e8e8e8;
   transition: background 0.2s;
+  flex-shrink: 0;
 }
 
 .breadcrumb-segment:hover {

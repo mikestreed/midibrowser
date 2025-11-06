@@ -1,6 +1,10 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 // Set the app name for macOS menu bar
 app.setName('MIDI Browser');
@@ -156,7 +160,6 @@ ipcMain.handle('read-file', async (event, filePath: string) => {
 // Read file with retry for Dropbox online-only files
 ipcMain.handle('read-file-with-retry', async (event, filePath: string, maxRetries: number = 10) => {
   let lastError: any;
-  let fileHandle: any = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -167,16 +170,20 @@ ipcMain.handle('read-file-with-retry', async (event, filePath: string, maxRetrie
       if (stats.size === 0) {
         console.log(`File is 0 bytes (online-only) on attempt ${attempt + 1}, triggering sync: ${filePath}`);
 
-        // Open file descriptor to trigger Dropbox Smart Sync download
-        try {
-          fileHandle = await fs.open(filePath, 'r');
-          await fileHandle.close();
-        } catch (e) {
-          console.log(`Error opening file descriptor: ${e}`);
+        // Use macOS 'open' command to actually open the file, which triggers Dropbox Smart Sync
+        if (attempt === 0) {
+          try {
+            // Escape the file path for shell
+            const escapedPath = filePath.replace(/'/g, "'\\''");
+            await execAsync(`open -g '${escapedPath}'`);
+            console.log(`Opened file with macOS 'open' command to trigger Dropbox sync`);
+          } catch (e) {
+            console.log(`Error opening file with 'open' command: ${e}`);
+          }
         }
 
-        // Wait progressively longer for download to start
-        const delay = Math.min(1000 + (attempt * 500), 5000);
+        // Wait progressively longer for download to complete
+        const delay = Math.min(1500 + (attempt * 1000), 8000);
         console.log(`Waiting ${delay}ms for Dropbox to download file...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
@@ -295,17 +302,17 @@ ipcMain.handle('presync-midi-files', async (event, dirPath: string) => {
         if (['.mid', '.midi'].includes(ext)) {
           const fullPath = path.join(dirPath, entry.name);
 
-          // Trigger sync by opening file descriptor (don't wait for it)
+          // Trigger sync by opening file with macOS 'open' command (don't wait for it)
           syncPromises.push(
             (async () => {
               try {
                 const stats = await fs.stat(fullPath);
                 if (stats.size === 0) {
                   console.log(`Pre-syncing MIDI file: ${entry.name}`);
-                  // Open file descriptor to trigger Dropbox Smart Sync
+                  // Use macOS 'open' command to trigger Dropbox Smart Sync
                   try {
-                    const fh = await fs.open(fullPath, 'r');
-                    await fh.close();
+                    const escapedPath = fullPath.replace(/'/g, "'\\''");
+                    execAsync(`open -g '${escapedPath}'`).catch(() => {});
                   } catch (e) {
                     // Ignore open errors
                   }
