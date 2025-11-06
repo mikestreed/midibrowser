@@ -21,13 +21,14 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
   const [loading, setLoading] = useState(true);
 
   const audioContextRef = useRef<AudioContext | null>(null);
-  const instrumentRef = useRef<any>(null);
+  const instrumentsRef = useRef<any[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const midiDataRef = useRef<Midi | null>(null);
   const scheduledNotesRef = useRef<any[]>([]);
   const startTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number | null>(null);
   const shouldAutoPlayRef = useRef<boolean>(true);
+  const startOffsetRef = useRef<number>(0);
 
   const cleanup = useCallback(() => {
     if (animationFrameRef.current) {
@@ -51,7 +52,7 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     });
     scheduledNotesRef.current = [];
 
-    // Close and reset audio context and instrument for fresh start
+    // Close and reset audio context and instruments for fresh start
     if (audioContextRef.current) {
       try {
         audioContextRef.current.close();
@@ -60,7 +61,7 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
       }
       audioContextRef.current = null;
     }
-    instrumentRef.current = null;
+    instrumentsRef.current = [];
     midiDataRef.current = null;
   }, []);
 
@@ -83,31 +84,66 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     setIsPlaying(false);
   }, []);
 
+  // Map GM program numbers to soundfont instrument names
+  const getInstrumentName = (program: number): string => {
+    const gmInstruments = [
+      'acoustic_grand_piano', 'bright_acoustic_piano', 'electric_grand_piano', 'honkytonk_piano',
+      'electric_piano_1', 'electric_piano_2', 'harpsichord', 'clavinet',
+      'celesta', 'glockenspiel', 'music_box', 'vibraphone',
+      'marimba', 'xylophone', 'tubular_bells', 'dulcimer',
+      'drawbar_organ', 'percussive_organ', 'rock_organ', 'church_organ',
+      'reed_organ', 'accordion', 'harmonica', 'tango_accordion',
+      'acoustic_guitar_nylon', 'acoustic_guitar_steel', 'electric_guitar_jazz', 'electric_guitar_clean',
+      'electric_guitar_muted', 'overdriven_guitar', 'distortion_guitar', 'guitar_harmonics',
+      'acoustic_bass', 'electric_bass_finger', 'electric_bass_pick', 'fretless_bass',
+      'slap_bass_1', 'slap_bass_2', 'synth_bass_1', 'synth_bass_2',
+      'violin', 'viola', 'cello', 'contrabass',
+      'tremolo_strings', 'pizzicato_strings', 'orchestral_harp', 'timpani',
+      'string_ensemble_1', 'string_ensemble_2', 'synth_strings_1', 'synth_strings_2',
+      'choir_aahs', 'voice_oohs', 'synth_choir', 'orchestra_hit',
+      'trumpet', 'trombone', 'tuba', 'muted_trumpet',
+      'french_horn', 'brass_section', 'synth_brass_1', 'synth_brass_2',
+      'soprano_sax', 'alto_sax', 'tenor_sax', 'baritone_sax',
+      'oboe', 'english_horn', 'bassoon', 'clarinet',
+      'piccolo', 'flute', 'recorder', 'pan_flute',
+      'blown_bottle', 'shakuhachi', 'whistle', 'ocarina',
+      'lead_1_square', 'lead_2_sawtooth', 'lead_3_calliope', 'lead_4_chiff',
+      'lead_5_charang', 'lead_6_voice', 'lead_7_fifths', 'lead_8_bass__lead',
+      'pad_1_new_age', 'pad_2_warm', 'pad_3_polysynth', 'pad_4_choir',
+      'pad_5_bowed', 'pad_6_metallic', 'pad_7_halo', 'pad_8_sweep',
+      'fx_1_rain', 'fx_2_soundtrack', 'fx_3_crystal', 'fx_4_atmosphere',
+      'fx_5_brightness', 'fx_6_goblins', 'fx_7_echoes', 'fx_8_scifi',
+      'sitar', 'banjo', 'shamisen', 'koto',
+      'kalimba', 'bagpipe', 'fiddle', 'shanai',
+      'tinkle_bell', 'agogo', 'steel_drums', 'woodblock',
+      'taiko_drum', 'melodic_tom', 'synth_drum', 'reverse_cymbal',
+      'guitar_fret_noise', 'breath_noise', 'seashore', 'bird_tweet',
+      'telephone_ring', 'helicopter', 'applause', 'gunshot'
+    ];
+
+    return gmInstruments[program] || 'acoustic_grand_piano';
+  };
+
   const playMidi = useCallback(() => {
-    if (!instrumentRef.current || !midiDataRef.current || !audioContextRef.current) {
-      console.log('Cannot play MIDI - missing resources', {
-        instrument: !!instrumentRef.current,
-        midi: !!midiDataRef.current,
-        audioContext: !!audioContextRef.current
-      });
+    if (instrumentsRef.current.length === 0 || !midiDataRef.current || !audioContextRef.current) {
+      console.log('Cannot play MIDI - missing resources');
       return;
     }
 
-    const instrument = instrumentRef.current;
     const midi = midiDataRef.current;
     const audioContext = audioContextRef.current;
 
-    console.log('Playing MIDI:', midi.name, 'Notes:', midi.tracks.reduce((sum, t) => sum + t.notes.length, 0), 'Duration:', duration);
-
-    // Collect all notes from all tracks
+    // Collect all notes from all tracks with their instrument assignments
     const notes: any[] = [];
-    midi.tracks.forEach((track) => {
+    midi.tracks.forEach((track, trackIndex) => {
+      const instrument = instrumentsRef.current[trackIndex];
       track.notes.forEach((note) => {
         notes.push({
           time: note.time,
           duration: note.duration,
           midi: note.midi,
-          velocity: note.velocity
+          velocity: note.velocity,
+          instrument: instrument
         });
       });
     });
@@ -115,14 +151,27 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     // Sort by time
     notes.sort((a, b) => a.time - b.time);
 
-    // Schedule all notes
+    if (notes.length === 0) {
+      console.log('No notes to play');
+      return;
+    }
+
+    // Find the start offset (skip silence at beginning)
+    const firstNoteTime = notes[0].time;
+    const startOffset = firstNoteTime;
+    startOffsetRef.current = startOffset;
+
+    console.log('Playing MIDI with', notes.length, 'notes, skipping', startOffset.toFixed(2), 'seconds of silence');
+
+    // Schedule all notes with offset
     const contextStartTime = audioContext.currentTime;
     startTimeRef.current = Date.now();
 
     scheduledNotesRef.current = notes.map((note) => {
-      return instrument.play(
+      const adjustedTime = note.time - startOffset;
+      return note.instrument.play(
         note.midi,
-        contextStartTime + note.time,
+        contextStartTime + adjustedTime,
         {
           duration: note.duration,
           gain: note.velocity
@@ -135,9 +184,9 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     // Update progress
     const updateProgress = () => {
       const elapsed = (Date.now() - startTimeRef.current) / 1000;
-      setCurrentTime(elapsed);
+      setCurrentTime(elapsed + startOffset);
 
-      if (elapsed >= duration) {
+      if (elapsed >= (duration - startOffset)) {
         setIsPlaying(false);
         setCurrentTime(0);
         scheduledNotesRef.current = [];
@@ -157,15 +206,66 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     setDuration(midi.duration);
     setTrackCount(midi.tracks.length);
 
-    // Always create fresh audio context and instrument for each file
+    // Always create fresh audio context
     audioContextRef.current = new AudioContext();
-    instrumentRef.current = await Soundfont.instrument(
-      audioContextRef.current,
-      'acoustic_grand_piano'
-    );
 
-    console.log('Loaded MIDI file:', file.name, 'Duration:', midi.duration);
-  }, [file.path, file.name]);
+    // Analyze the MIDI file to determine instruments
+    const allNotes: number[] = [];
+    midi.tracks.forEach(track => {
+      track.notes.forEach(note => {
+        allNotes.push(note.midi);
+      });
+    });
+
+    // Check if this is a single-note file (metronome/click track)
+    const uniqueNotes = [...new Set(allNotes)];
+    const isSingleNote = uniqueNotes.length === 1;
+
+    console.log('MIDI analysis:', {
+      totalNotes: allNotes.length,
+      uniqueNotes: uniqueNotes.length,
+      isSingleNote,
+      pitch: isSingleNote ? uniqueNotes[0] : null
+    });
+
+    // Load instruments for each track
+    const instruments: any[] = [];
+
+    for (let i = 0; i < midi.tracks.length; i++) {
+      const track = midi.tracks[i];
+      let instrumentName = 'acoustic_grand_piano';
+
+      // Special handling for single-note files
+      if (isSingleNote && allNotes.length > 0) {
+        const pitch = uniqueNotes[0];
+        if (pitch < 24) { // Below C1
+          instrumentName = 'synth_drum'; // Kick drum
+          console.log('Using kick drum for low single note');
+        } else {
+          instrumentName = 'synth_drum'; // Hi-hat/percussion
+          console.log('Using hi-hat for single note');
+        }
+      } else if (track.instrument) {
+        // Use the instrument assigned in the MIDI file
+        const program = track.instrument.number;
+        instrumentName = getInstrumentName(program);
+        console.log(`Track ${i}: Using GM instrument #${program} (${instrumentName})`);
+      } else if (track.channel === 9) {
+        // Channel 10 (9 in 0-indexed) is drums
+        instrumentName = 'synth_drum';
+        console.log(`Track ${i}: Drum track detected`);
+      }
+
+      const instrument = await Soundfont.instrument(
+        audioContextRef.current!,
+        instrumentName as any
+      );
+      instruments.push(instrument);
+    }
+
+    instrumentsRef.current = instruments;
+    console.log('Loaded', instruments.length, 'instruments for', midi.tracks.length, 'tracks');
+  }, [file.path]);
 
   const loadAudioFile = useCallback(async () => {
     const buffer = await ipcRenderer.invoke('read-file', file.path);
@@ -187,6 +287,33 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     audio.addEventListener('timeupdate', () => {
       setCurrentTime(audio.currentTime);
     });
+
+    // Detect silence at start using Web Audio API
+    try {
+      const audioContext = new AudioContext();
+      const arrayBuffer = await buffer.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      const channelData = audioBuffer.getChannelData(0);
+      const threshold = 0.01; // Very low threshold above background noise
+      let silenceEnd = 0;
+
+      // Find first sample above threshold
+      for (let i = 0; i < channelData.length; i++) {
+        if (Math.abs(channelData[i]) > threshold) {
+          silenceEnd = i / audioBuffer.sampleRate;
+          break;
+        }
+      }
+
+      startOffsetRef.current = silenceEnd;
+      console.log('Audio file: skipping', silenceEnd.toFixed(2), 'seconds of silence');
+
+      audioContext.close();
+    } catch (err) {
+      console.error('Error analyzing audio:', err);
+      startOffsetRef.current = 0;
+    }
 
     await audio.load();
   }, [file.path]);
@@ -224,15 +351,17 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     if (!loading && shouldAutoPlayRef.current) {
       shouldAutoPlayRef.current = false;
 
-      console.log('Auto-play triggered for:', file.name, 'isMidi:', file.isMidi);
+      console.log('Auto-play triggered for:', file.name);
 
       // Start playback
       setTimeout(() => {
         if (file.isMidi) {
-          console.log('Calling playMidi()');
           playMidi();
         } else if (file.isAudio && audioRef.current) {
-          console.log('Playing audio file');
+          // Skip silence at the start of audio files
+          if (startOffsetRef.current > 0) {
+            audioRef.current.currentTime = startOffsetRef.current;
+          }
           audioRef.current.play().catch(err => {
             console.error('Audio play error:', err);
           });
