@@ -124,7 +124,7 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     return gmInstruments[program] || 'acoustic_grand_piano';
   };
 
-  const playMidi = useCallback(() => {
+  const playMidi = useCallback((fromTime?: number) => {
     if (instrumentsRef.current.length === 0 || !midiDataRef.current || !audioContextRef.current) {
       console.log('Cannot play MIDI - missing resources');
       return;
@@ -156,18 +156,21 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
       return;
     }
 
-    // Find the start offset (skip silence at beginning)
+    // Use provided start time or skip silence at beginning
     const firstNoteTime = notes[0].time;
-    const startOffset = firstNoteTime;
+    const startOffset = fromTime !== undefined ? fromTime : firstNoteTime;
     startOffsetRef.current = startOffset;
 
-    console.log('Playing MIDI with', notes.length, 'notes, skipping', startOffset.toFixed(2), 'seconds of silence');
+    console.log('Playing MIDI with', notes.length, 'notes from', startOffset.toFixed(2), 'seconds');
+
+    // Filter notes that should play from the start time
+    const notesToPlay = notes.filter(note => note.time >= startOffset);
 
     // Schedule all notes with offset
     const contextStartTime = audioContext.currentTime;
     startTimeRef.current = Date.now();
 
-    scheduledNotesRef.current = notes.map((note) => {
+    scheduledNotesRef.current = notesToPlay.map((note) => {
       const adjustedTime = note.time - startOffset;
       return note.instrument.play(
         note.midi,
@@ -399,6 +402,20 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
     }
   }, [currentIndex, files, onNavigate]);
 
+  // Skip forward/backward 5 seconds
+  const skipTime = useCallback((seconds: number) => {
+    const newTime = Math.max(0, Math.min(duration, currentTime + seconds));
+    setCurrentTime(newTime);
+
+    if (file.isAudio && audioRef.current) {
+      audioRef.current.currentTime = newTime;
+    } else if (file.isMidi && midiDataRef.current) {
+      // For MIDI, restart from new position
+      stopMidi();
+      playMidi(newTime);
+    }
+  }, [currentTime, duration, file.isAudio, file.isMidi, playMidi, stopMidi]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -410,6 +427,14 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
         e.preventDefault();
         e.stopPropagation();
         onClose();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopPropagation();
+        skipTime(-5);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        skipTime(5);
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         e.stopPropagation();
@@ -423,7 +448,7 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onClose, navigateToFile]);
+  }, [onClose, navigateToFile, skipTime]);
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();

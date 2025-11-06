@@ -15,6 +15,8 @@ const App: React.FC = () => {
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [scanMode, setScanMode] = useState<boolean>(false);
   const [scanning, setScanning] = useState<boolean>(false);
+  const [scanResults, setScanResults] = useState<FileEntry[]>([]);
+  const [scanRootPath, setScanRootPath] = useState<string>('');
 
   const loadDirectory = useCallback(async (path: string) => {
     setScanMode(false);
@@ -69,6 +71,8 @@ const App: React.FC = () => {
         fileCount: result.fileCount // Add custom property for scan mode
       }));
 
+      setScanResults(scanEntries);
+      setScanRootPath(currentPath);
       setFiles(scanEntries);
       console.log(`Scan complete: found ${scanEntries.length} folders with MIDI files`);
     } catch (error) {
@@ -124,13 +128,22 @@ const App: React.FC = () => {
   const navigateUp = useCallback(() => {
     if (!currentPath) return;
 
+    // If we came from scan results, go back to them
+    if (scanResults.length > 0 && currentPath !== scanRootPath) {
+      setScanMode(true);
+      setFiles(scanResults);
+      setCurrentPath(scanRootPath);
+      setSelectedIndex(-1);
+      return;
+    }
+
     const pathParts = currentPath.split('/').filter(Boolean);
     if (pathParts.length > 0) {
       pathParts.pop(); // Remove last segment
       const parentPath = '/' + pathParts.join('/');
       navigateToPath(parentPath || '/');
     }
-  }, [currentPath, navigateToPath]);
+  }, [currentPath, navigateToPath, scanResults, scanRootPath]);
 
   const handleBreadcrumbClick = useCallback((index: number) => {
     const pathParts = currentPath.split('/').filter(Boolean);
@@ -216,6 +229,13 @@ const App: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't handle shortcuts when Quick Look is open (it handles its own)
       if (quickLookFile) return;
+
+      // Escape or Left arrow to go back
+      if (e.key === 'Escape' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        navigateUp();
+        return;
+      }
 
       // Cmd+Up to go up one folder level (Mac)
       if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowUp') {
