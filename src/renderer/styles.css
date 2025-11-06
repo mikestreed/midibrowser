@@ -79,9 +79,14 @@ body {
 .breadcrumb-root {
   cursor: pointer;
   font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #e8e8e8;
+  transition: background 0.2s;
 }
 
 .breadcrumb-root:hover {
+  background: #d0d0d0;
   color: #0066ff;
 }
 
@@ -92,11 +97,15 @@ body {
 
 .breadcrumb-segment {
   cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #e8e8e8;
+  transition: background 0.2s;
 }
 
 .breadcrumb-segment:hover {
+  background: #d0d0d0;
   color: #0066ff;
-  text-decoration: underline;
 }
 
 .choose-folder-button {
