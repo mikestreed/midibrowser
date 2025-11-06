@@ -170,16 +170,16 @@ ipcMain.handle('read-file-with-retry', async (event, filePath: string, maxRetrie
       if (stats.size === 0) {
         console.log(`File is 0 bytes (online-only) on attempt ${attempt + 1}, triggering sync: ${filePath}`);
 
-        // Use 'cat' command to trigger Dropbox Smart Sync without opening any app
+        // Open file in QuickTime Player to trigger Dropbox Smart Sync
         if (attempt === 0) {
           try {
             // Escape the file path for shell
             const escapedPath = filePath.replace(/'/g, "'\\''");
-            // Cat the file to /dev/null to trigger download without opening Logic Pro
-            execAsync(`cat '${escapedPath}' > /dev/null 2>&1`).catch(() => {});
-            console.log(`Triggered Dropbox sync with 'cat' command (no app will open)`);
+            // Open in QuickTime Player to trigger Dropbox download
+            execAsync(`open -a "QuickTime Player" '${escapedPath}'`).catch(() => {});
+            console.log(`Opened file in QuickTime Player to trigger Dropbox sync`);
           } catch (e) {
-            console.log(`Error triggering sync: ${e}`);
+            console.log(`Error opening file in QuickTime: ${e}`);
           }
         }
 
@@ -295,42 +295,40 @@ ipcMain.handle('scan-for-midi-folders', async (event, rootPath: string) => {
 ipcMain.handle('presync-midi-files', async (event, dirPath: string) => {
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
-    const syncPromises: Promise<void>[] = [];
+    let firstOnlineOnlyFile: string | null = null;
 
+    // Find the first online-only (0-byte) MIDI file
     for (const entry of entries) {
       if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
         if (['.mid', '.midi'].includes(ext)) {
           const fullPath = path.join(dirPath, entry.name);
-
-          // Trigger sync by reading file with 'cat' (don't wait for it)
-          syncPromises.push(
-            (async () => {
-              try {
-                const stats = await fs.stat(fullPath);
-                if (stats.size === 0) {
-                  console.log(`Pre-syncing MIDI file: ${entry.name}`);
-                  // Use 'cat' to trigger Dropbox Smart Sync without opening any app
-                  try {
-                    const escapedPath = fullPath.replace(/'/g, "'\\''");
-                    execAsync(`cat '${escapedPath}' > /dev/null 2>&1`).catch(() => {});
-                  } catch (e) {
-                    // Ignore errors
-                  }
-                }
-              } catch (e) {
-                // Ignore errors during pre-sync
-              }
-            })()
-          );
+          try {
+            const stats = await fs.stat(fullPath);
+            if (stats.size === 0 && !firstOnlineOnlyFile) {
+              firstOnlineOnlyFile = fullPath;
+              break; // Found the first one, stop looking
+            }
+          } catch (e) {
+            // Ignore errors
+          }
         }
       }
     }
 
-    // Don't wait for all to complete, just trigger them
-    Promise.all(syncPromises).catch(() => {});
+    // If we found an online-only file, open it in QuickTime to trigger sync
+    if (firstOnlineOnlyFile) {
+      console.log(`Pre-syncing by opening first online-only file in QuickTime: ${path.basename(firstOnlineOnlyFile)}`);
+      try {
+        const escapedPath = firstOnlineOnlyFile.replace(/'/g, "'\\''");
+        execAsync(`open -a "QuickTime Player" '${escapedPath}'`).catch(() => {});
+      } catch (e) {
+        console.error('Error opening file in QuickTime:', e);
+      }
+      return { triggered: 1 };
+    }
 
-    return { triggered: syncPromises.length };
+    return { triggered: 0 };
   } catch (error) {
     console.error('Error pre-syncing MIDI files:', error);
     return { triggered: 0 };
