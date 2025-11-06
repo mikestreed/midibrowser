@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { exec } from 'child_process';
@@ -374,8 +374,9 @@ ipcMain.handle('get-file-info', async (event, filePath: string) => {
 
 // Handle native drag and drop out of app
 ipcMain.on('ondragstart', (event, filePath: string) => {
-  // Create a simple 1x1 transparent icon to avoid file not found errors
-  const icon = nativeImage.createEmpty();
+  // Create a small placeholder icon
+  // Using a 1x1 pixel image to avoid file not found errors
+  const icon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
   event.sender.startDrag({
     file: filePath,
     icon: icon
@@ -455,6 +456,17 @@ ipcMain.handle('rename-file', async (event, filePath: string, newName: string) =
     return { success: true, newPath: newPath };
   } catch (error: any) {
     console.error('Error renaming file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Reveal file in Finder
+ipcMain.handle('reveal-in-finder', async (event, filePath: string) => {
+  try {
+    shell.showItemInFolder(filePath);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error revealing file in Finder:', error);
     return { success: false, error: error.message };
   }
 });

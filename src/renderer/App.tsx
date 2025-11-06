@@ -197,11 +197,12 @@ const App: React.FC = () => {
     }
   }, [leftFiles, rightFiles, scanMode, loadDirectory]);
 
-  const handleFileDoubleClick = useCallback((column: 'left' | 'right', file: FileEntry) => {
+  const handleFileDoubleClick = useCallback(async (column: 'left' | 'right', file: FileEntry) => {
     if (file.isDirectory) {
       navigateToPath(file.path);
     } else {
-      setQuickLookFile(file);
+      // Double-click on a file reveals it in Finder
+      await ipcRenderer.invoke('reveal-in-finder', file.path);
     }
   }, [navigateToPath]);
 
@@ -382,8 +383,11 @@ const App: React.FC = () => {
           const ext = lastDot > 0 ? file.name.substring(lastDot) : '';
 
           // Remove the last green circle if present
+          // Use Array.from to properly handle multi-byte emoji characters
           if (nameWithoutExt.endsWith('🟢')) {
-            const newName = nameWithoutExt.slice(0, -1) + ext;
+            const chars = Array.from(nameWithoutExt);
+            chars.pop(); // Remove last character (the emoji)
+            const newName = chars.join('') + ext;
             const result = await ipcRenderer.invoke('rename-file', file.path, newName);
             if (result.success) {
               // Reload the current directory
