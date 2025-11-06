@@ -1,6 +1,7 @@
 {
   "name": "midibrowser",
   "version": "1.0.0",
+  "productName": "MIDI Browser",
   "description": "OSX Finder-style MIDI file browser with Quick Look playback",
   "main": "dist/main.js",
   "scripts": {

@@ -2,6 +2,9 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
+// Set the app name for macOS menu bar
+app.setName('MIDI Browser');
+
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
