@@ -203,6 +203,18 @@ const App: React.FC = () => {
     }
   }, [leftFiles, rightFiles, selectedColumn]);
 
+  const handleFileMove = useCallback(async (sourcePath: string, targetDir: string) => {
+    const result = await ipcRenderer.invoke('move-file', sourcePath, targetDir);
+    if (result.success) {
+      console.log('File moved successfully:', result.newPath);
+      // Refresh the current directory to show the changes
+      loadDirectory(currentPath);
+    } else {
+      console.error('Failed to move file:', result.error);
+      alert(`Failed to move file: ${result.error}`);
+    }
+  }, [currentPath, loadDirectory]);
+
   // Handle file drop
   const handleFileDrop = useCallback(async (filePath: string) => {
     const fileInfo = await ipcRenderer.invoke('get-file-info', filePath);
@@ -383,6 +395,8 @@ const App: React.FC = () => {
             loading={loadingLeft}
             scanMode={scanMode}
             scanning={false}
+            column="left"
+            onFileMove={handleFileMove}
             onFileClick={(index) => handleFileClick('left', index)}
             onFileDoubleClick={(file) => handleFileDoubleClick('left', file)}
           />
@@ -395,6 +409,8 @@ const App: React.FC = () => {
             loading={loadingRight}
             scanMode={false}
             scanning={scanning}
+            column="right"
+            onFileMove={handleFileMove}
             onFileClick={(index) => handleFileClick('right', index)}
             onFileDoubleClick={(file) => handleFileDoubleClick('right', file)}
           />

@@ -373,3 +373,36 @@ ipcMain.handle('get-file-info', async (event, filePath: string) => {
     return null;
   }
 });
+
+// Handle native drag and drop out of app
+ipcMain.on('ondragstart', (event, filePath: string) => {
+  event.sender.startDrag({
+    file: filePath,
+    icon: path.join(__dirname, 'icon.png') // Optional: add drag icon
+  });
+});
+
+// Move file from one location to another
+ipcMain.handle('move-file', async (event, sourcePath: string, targetDir: string) => {
+  try {
+    const fileName = path.basename(sourcePath);
+    const destPath = path.join(targetDir, fileName);
+
+    // Check if target already exists
+    try {
+      await fs.access(destPath);
+      throw new Error('File already exists in target directory');
+    } catch (err: any) {
+      // File doesn't exist, proceed with move
+      if (err.code !== 'ENOENT') throw err;
+    }
+
+    // Move the file
+    await fs.rename(sourcePath, destPath);
+    console.log(`Moved file from ${sourcePath} to ${destPath}`);
+    return { success: true, newPath: destPath };
+  } catch (error: any) {
+    console.error('Error moving file:', error);
+    return { success: false, error: error.message };
+  }
+});

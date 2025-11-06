@@ -235,6 +235,15 @@ body {
   color: #fff;
 }
 
+.file-table tbody tr.drag-over {
+  background: #d0e8ff;
+  border: 2px dashed #0066ff;
+}
+
+.file-table tbody tr[draggable="true"] {
+  cursor: move;
+}
+
 .file-table td {
   padding: 6px 12px;
 }

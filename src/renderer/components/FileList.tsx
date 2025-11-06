@@ -8,6 +8,8 @@ interface FileListProps {
   loading: boolean;
   scanMode: boolean;
   scanning: boolean;
+  column?: 'left' | 'right';
+  onFileMove?: (sourcePath: string, targetDir: string) => void;
   onFileClick: (index: number) => void;
   onFileDoubleClick: (file: FileEntry) => void;
 }
@@ -18,6 +20,8 @@ const FileList: React.FC<FileListProps> = ({
   loading,
   scanMode,
   scanning,
+  column,
+  onFileMove,
   onFileClick,
   onFileDoubleClick
 }) => {
@@ -59,6 +63,8 @@ const FileList: React.FC<FileListProps> = ({
               file={file}
               selected={index === selectedIndex}
               scanMode={scanMode}
+              column={column}
+              onFileMove={onFileMove}
               onClick={() => onFileClick(index)}
               onDoubleClick={() => onFileDoubleClick(file)}
             />

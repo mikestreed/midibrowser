@@ -8,6 +8,8 @@ interface FileListItemProps {
   file: FileEntry;
   selected: boolean;
   scanMode: boolean;
+  column?: 'left' | 'right';
+  onFileMove?: (sourcePath: string, targetDir: string) => void;
   onClick: () => void;
   onDoubleClick: () => void;
 }
@@ -16,10 +18,13 @@ const FileListItem: React.FC<FileListItemProps> = ({
   file,
   selected,
   scanMode,
+  column,
+  onFileMove,
   onClick,
   onDoubleClick
 }) => {
   const [metadata, setMetadata] = useState<MidiMetadata | null>(null);
+  const [dragOver, setDragOver] = useState<boolean>(false);
 
   useEffect(() => {
     if (file.isMidi) {
@@ -78,13 +83,59 @@ const FileListItem: React.FC<FileListItemProps> = ({
     return '📄';
   };
 
-  const className = `${selected ? 'selected' : ''} ${file.isAudio ? 'audio-file' : ''}`;
+  const className = `${selected ? 'selected' : ''} ${file.isAudio ? 'audio-file' : ''} ${dragOver ? 'drag-over' : ''}`;
+
+  const handleDragStart = (e: React.DragEvent) => {
+    // Enable dragging files out of the app to Finder/desktop
+    e.dataTransfer.effectAllowed = 'copyMove';
+    e.dataTransfer.setData('text/plain', file.path);
+
+    // For Electron, set the file path for native drag
+    const { ipcRenderer } = window.require('electron');
+    ipcRenderer.send('ondragstart', file.path);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    // Only folders in the left column can accept drops
+    if (file.isDirectory && column === 'left') {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+
+    if (!file.isDirectory || column !== 'left') return;
+
+    const sourcePath = e.dataTransfer.getData('text/plain');
+    if (!sourcePath || sourcePath === file.path) return;
+
+    // Call the move handler if provided
+    if (onFileMove) {
+      onFileMove(sourcePath, file.path);
+    }
+  };
 
   return (
     <tr
       className={className}
+      draggable={!file.isDirectory || scanMode} // Files are draggable, folders only in scan mode
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       <td>
         <div className="file-name">
