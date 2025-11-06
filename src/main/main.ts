@@ -204,6 +204,79 @@ ipcMain.handle('read-file-with-retry', async (event, filePath: string, maxRetrie
   throw lastError || new Error('Failed to read file after retries');
 });
 
+// Recursively scan for folders containing MIDI files
+ipcMain.handle('scan-for-midi-folders', async (event, rootPath: string) => {
+  const results: Array<{
+    name: string;
+    path: string;
+    fileCount: number;
+    totalSize: number;
+  }> = [];
+
+  async function scanDirectory(dirPath: string) {
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+      let midiFiles: string[] = [];
+      const subdirs: string[] = [];
+
+      // First pass: find MIDI files and subdirectories
+      for (const entry of entries) {
+        // Skip hidden files/folders
+        if (entry.name.startsWith('.')) continue;
+
+        const fullPath = path.join(dirPath, entry.name);
+
+        if (entry.isDirectory()) {
+          subdirs.push(fullPath);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (['.mid', '.midi'].includes(ext)) {
+            midiFiles.push(fullPath);
+          }
+        }
+      }
+
+      // If this folder has MIDI files directly in it, add it to results
+      if (midiFiles.length > 0) {
+        let totalSize = 0;
+        for (const filePath of midiFiles) {
+          try {
+            const stats = await fs.stat(filePath);
+            totalSize += stats.size;
+          } catch (e) {
+            // Skip files we can't stat
+          }
+        }
+
+        results.push({
+          name: path.basename(dirPath),
+          path: dirPath,
+          fileCount: midiFiles.length,
+          totalSize: totalSize
+        });
+      }
+
+      // Recursively scan subdirectories
+      for (const subdir of subdirs) {
+        await scanDirectory(subdir);
+      }
+
+    } catch (error) {
+      // Skip directories we can't read
+      console.error(`Error scanning ${dirPath}:`, error);
+    }
+  }
+
+  await scanDirectory(rootPath);
+
+  // Sort alphabetically by folder name
+  results.sort((a, b) => a.name.localeCompare(b.name));
+
+  console.log(`Scan found ${results.length} folders with MIDI files`);
+  return results;
+});
+
 // Pre-sync all MIDI files in a directory (for Dropbox)
 ipcMain.handle('presync-midi-files', async (event, dirPath: string) => {
   try {

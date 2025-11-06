@@ -13,8 +13,11 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [pathHistory, setPathHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [scanMode, setScanMode] = useState<boolean>(false);
+  const [scanning, setScanning] = useState<boolean>(false);
 
   const loadDirectory = useCallback(async (path: string) => {
+    setScanMode(false);
     setLoading(true);
     try {
       const entries: FileEntry[] = await ipcRenderer.invoke('read-directory', path);
@@ -45,6 +48,35 @@ const App: React.FC = () => {
       setLoading(false);
     }
   }, []);
+
+  const handleScan = useCallback(async () => {
+    setScanning(true);
+    setScanMode(true);
+    setSelectedIndex(-1);
+
+    try {
+      const results = await ipcRenderer.invoke('scan-for-midi-folders', currentPath);
+
+      // Convert scan results to FileEntry format
+      const scanEntries: FileEntry[] = results.map((result: any) => ({
+        name: result.name,
+        path: result.path,
+        isDirectory: true,
+        isMidi: false,
+        isAudio: false,
+        size: result.totalSize,
+        modified: new Date(),
+        fileCount: result.fileCount // Add custom property for scan mode
+      }));
+
+      setFiles(scanEntries);
+      console.log(`Scan complete: found ${scanEntries.length} folders with MIDI files`);
+    } catch (error) {
+      console.error('Scan failed:', error);
+    } finally {
+      setScanning(false);
+    }
+  }, [currentPath]);
 
   const navigateToPath = useCallback((path: string) => {
     const newHistory = pathHistory.slice(0, historyIndex + 1);
@@ -262,12 +294,17 @@ const App: React.FC = () => {
         <button className="choose-folder-button" onClick={handleChooseFolder}>
           Choose Folder
         </button>
+        <button className="scan-button" onClick={handleScan} disabled={scanning}>
+          {scanning ? 'Scanning...' : 'SCAN'}
+        </button>
       </div>
 
       <FileList
         files={files}
         selectedIndex={selectedIndex}
         loading={loading}
+        scanMode={scanMode}
+        scanning={scanning}
         onFileClick={handleFileClick}
         onFileDoubleClick={handleFileDoubleClick}
       />

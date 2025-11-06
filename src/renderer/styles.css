@@ -126,6 +126,29 @@ body {
   background: #f0f0f0;
 }
 
+.scan-button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid #d1d1d1;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  margin-left: 8px;
+}
+
+.scan-button:hover {
+  background: #f0f0f0;
+}
+
+.scan-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.scan-button:disabled:hover {
+  background: #fff;
+}
+
 /* File List Container */
 .file-list-container {
   flex: 1;

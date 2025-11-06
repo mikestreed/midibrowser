@@ -6,6 +6,8 @@ interface FileListProps {
   files: FileEntry[];
   selectedIndex: number;
   loading: boolean;
+  scanMode: boolean;
+  scanning: boolean;
   onFileClick: (index: number) => void;
   onFileDoubleClick: (file: FileEntry) => void;
 }
@@ -14,13 +16,15 @@ const FileList: React.FC<FileListProps> = ({
   files,
   selectedIndex,
   loading,
+  scanMode,
+  scanning,
   onFileClick,
   onFileDoubleClick
 }) => {
-  if (loading) {
+  if (loading || scanning) {
     return (
       <div className="loading">
-        Loading...
+        {scanning ? 'Scanning...' : 'Loading...'}
       </div>
     );
   }
@@ -43,8 +47,8 @@ const FileList: React.FC<FileListProps> = ({
         <thead>
           <tr>
             <th>Name</th>
-            <th style={{ width: '100px' }}>Length</th>
-            <th style={{ width: '100px' }}>Tracks</th>
+            <th style={{ width: '100px' }}>{scanMode ? 'Size' : 'Length'}</th>
+            <th style={{ width: '100px' }}>{scanMode ? 'Files' : 'Tracks'}</th>
           </tr>
         </thead>
         <tbody>
@@ -53,6 +57,7 @@ const FileList: React.FC<FileListProps> = ({
               key={file.path}
               file={file}
               selected={index === selectedIndex}
+              scanMode={scanMode}
               onClick={() => onFileClick(index)}
               onDoubleClick={() => onFileDoubleClick(file)}
             />

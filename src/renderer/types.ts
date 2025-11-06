@@ -6,6 +6,7 @@ export interface FileEntry {
   isAudio?: boolean;
   size?: number;
   modified?: Date;
+  fileCount?: number; // For scan mode: number of MIDI files in folder
 }
 
 export interface MidiMetadata {

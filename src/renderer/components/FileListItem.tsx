@@ -7,6 +7,7 @@ const { ipcRenderer } = window.require('electron');
 interface FileListItemProps {
   file: FileEntry;
   selected: boolean;
+  scanMode: boolean;
   onClick: () => void;
   onDoubleClick: () => void;
 }
@@ -14,6 +15,7 @@ interface FileListItemProps {
 const FileListItem: React.FC<FileListItemProps> = ({
   file,
   selected,
+  scanMode,
   onClick,
   onDoubleClick
 }) => {
@@ -55,6 +57,13 @@ const FileListItem: React.FC<FileListItemProps> = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const formatSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  };
+
   const getIcon = (): string => {
     if (file.isDirectory) return '📁';
     if (file.isMidi) return '🎹';
@@ -77,10 +86,16 @@ const FileListItem: React.FC<FileListItemProps> = ({
         </div>
       </td>
       <td className="file-length">
-        {metadata && metadata.duration > 0 ? formatDuration(metadata.duration) : (file.size === 0 ? '☁️' : '')}
+        {scanMode
+          ? (file.size ? formatSize(file.size) : '')
+          : (metadata && metadata.duration > 0 ? formatDuration(metadata.duration) : (file.size === 0 ? '☁️' : ''))
+        }
       </td>
       <td className="track-count">
-        {metadata && metadata.trackCount > 0 ? metadata.trackCount : ''}
+        {scanMode
+          ? (file.fileCount ? file.fileCount : '')
+          : (metadata && metadata.trackCount > 0 ? metadata.trackCount : '')
+        }
       </td>
     </tr>
   );
