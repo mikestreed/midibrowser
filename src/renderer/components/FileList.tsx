@@ -47,8 +47,9 @@ const FileList: React.FC<FileListProps> = ({
         <thead>
           <tr>
             <th>Name</th>
-            <th style={{ width: '100px' }}>{scanMode ? 'Size' : 'Length'}</th>
-            <th style={{ width: '100px' }}>{scanMode ? 'Files' : 'Tracks'}</th>
+            <th style={{ width: '80px' }}>{scanMode ? 'Size' : 'Length'}</th>
+            <th style={{ width: '70px' }}>{scanMode ? 'Files' : 'Tempo'}</th>
+            <th style={{ width: '70px' }}>{scanMode ? '' : 'Tracks'}</th>
           </tr>
         </thead>
         <tbody>

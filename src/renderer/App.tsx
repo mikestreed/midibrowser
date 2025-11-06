@@ -7,10 +7,16 @@ const { ipcRenderer } = window.require('electron');
 
 const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string>('');
-  const [files, setFiles] = useState<FileEntry[]>([]);
+  const [leftFiles, setLeftFiles] = useState<FileEntry[]>([]);
+  const [rightFiles, setRightFiles] = useState<FileEntry[]>([]);
+  const [leftPath, setLeftPath] = useState<string>('');
+  const [rightPath, setRightPath] = useState<string>('');
+  const [selectedColumn, setSelectedColumn] = useState<'left' | 'right'>('right');
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [quickLookFile, setQuickLookFile] = useState<FileEntry | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadingLeft, setLoadingLeft] = useState<boolean>(false);
+  const [loadingRight, setLoadingRight] = useState<boolean>(false);
   const [pathHistory, setPathHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [scanMode, setScanMode] = useState<boolean>(false);
@@ -20,23 +26,43 @@ const App: React.FC = () => {
 
   const loadDirectory = useCallback(async (path: string) => {
     setScanMode(false);
-    setLoading(true);
-    try {
-      const entries: FileEntry[] = await ipcRenderer.invoke('read-directory', path);
+    setLoadingLeft(true);
+    setLoadingRight(true);
 
-      // Sort: directories first, then by name
+    try {
+      // Load parent folder for left column
+      const pathParts = path.split('/').filter(Boolean);
+      let parentPath = '/';
+      if (pathParts.length > 0) {
+        pathParts.pop();
+        parentPath = '/' + pathParts.join('/');
+      }
+
+      // Load parent directory
+      const parentEntries: FileEntry[] = await ipcRenderer.invoke('read-directory', parentPath);
+      parentEntries.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      // Load current directory
+      const entries: FileEntry[] = await ipcRenderer.invoke('read-directory', path);
       entries.sort((a, b) => {
         if (a.isDirectory && !b.isDirectory) return -1;
         if (!a.isDirectory && b.isDirectory) return 1;
         return a.name.localeCompare(b.name);
       });
 
-      setFiles(entries);
+      setLeftFiles(parentEntries);
+      setRightFiles(entries);
+      setLeftPath(parentPath);
+      setRightPath(path);
       setCurrentPath(path);
       setSelectedIndex(-1);
+      setSelectedColumn('right');
 
       // Pre-sync all MIDI files in this folder (for Dropbox online-only files)
-      // This runs in the background and doesn't block
       ipcRenderer.invoke('presync-midi-files', path).then((result: any) => {
         if (result.triggered > 0) {
           console.log(`Triggered sync for ${result.triggered} MIDI files`);
@@ -47,6 +73,8 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Failed to load directory:', error);
     } finally {
+      setLoadingLeft(false);
+      setLoadingRight(false);
       setLoading(false);
     }
   }, []);
@@ -73,7 +101,12 @@ const App: React.FC = () => {
 
       setScanResults(scanEntries);
       setScanRootPath(currentPath);
-      setFiles(scanEntries);
+      // Scan results go to LEFT column, RIGHT column becomes empty
+      setLeftFiles(scanEntries);
+      setRightFiles([]);
+      setLeftPath(currentPath + ' (scan results)');
+      setRightPath('');
+      setSelectedColumn('left');
       console.log(`Scan complete: found ${scanEntries.length} folders with MIDI files`);
     } catch (error) {
       console.error('Scan failed:', error);
@@ -106,11 +139,12 @@ const App: React.FC = () => {
     }
   }, [historyIndex, pathHistory, loadDirectory]);
 
-  const handleFileClick = useCallback((index: number) => {
+  const handleFileClick = useCallback((column: 'left' | 'right', index: number) => {
+    setSelectedColumn(column);
     setSelectedIndex(index);
   }, []);
 
-  const handleFileDoubleClick = useCallback((file: FileEntry) => {
+  const handleFileDoubleClick = useCallback((column: 'left' | 'right', file: FileEntry) => {
     if (file.isDirectory) {
       navigateToPath(file.path);
     } else {
@@ -131,9 +165,13 @@ const App: React.FC = () => {
     // If we came from scan results, go back to them
     if (scanResults.length > 0 && currentPath !== scanRootPath) {
       setScanMode(true);
-      setFiles(scanResults);
+      setLeftFiles(scanResults);
+      setRightFiles([]);
+      setLeftPath(scanRootPath + ' (scan results)');
+      setRightPath('');
       setCurrentPath(scanRootPath);
       setSelectedIndex(-1);
+      setSelectedColumn('left');
       return;
     }
 
@@ -158,11 +196,12 @@ const App: React.FC = () => {
 
   const handleQuickLookNavigate = useCallback((index: number) => {
     setSelectedIndex(index);
+    const files = selectedColumn === 'left' ? leftFiles : rightFiles;
     const file = files[index];
     if (!file.isDirectory) {
       setQuickLookFile(file);
     }
-  }, [files]);
+  }, [leftFiles, rightFiles, selectedColumn]);
 
   // Handle file drop
   const handleFileDrop = useCallback(async (filePath: string) => {
@@ -184,18 +223,16 @@ const App: React.FC = () => {
     setPathHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
 
-    // Find and select the file
+    // Find and select the file in the right column
     // We need to wait for the files to be loaded
     setTimeout(() => {
-      setFiles((currentFiles) => {
-        const fileIndex = currentFiles.findIndex((f) => f.name === fileName);
-        if (fileIndex >= 0) {
-          setSelectedIndex(fileIndex);
-        }
-        return currentFiles;
-      });
+      const fileIndex = rightFiles.findIndex((f: FileEntry) => f.name === fileName);
+      if (fileIndex >= 0) {
+        setSelectedIndex(fileIndex);
+        setSelectedColumn('right');
+      }
     }, 100);
-  }, [loadDirectory, pathHistory, historyIndex]);
+  }, [loadDirectory, pathHistory, historyIndex, rightFiles]);
 
   // Drag and drop handlers
   useEffect(() => {
@@ -230,10 +267,28 @@ const App: React.FC = () => {
       // Don't handle shortcuts when Quick Look is open (it handles its own)
       if (quickLookFile) return;
 
-      // Escape or Left arrow to go back
-      if (e.key === 'Escape' || e.key === 'ArrowLeft') {
+      const files = selectedColumn === 'left' ? leftFiles : rightFiles;
+
+      // Escape to go back
+      if (e.key === 'Escape') {
         e.preventDefault();
         navigateUp();
+        return;
+      }
+
+      // Left arrow to select left column
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setSelectedColumn('left');
+        setSelectedIndex(Math.min(selectedIndex, leftFiles.length - 1));
+        return;
+      }
+
+      // Right arrow to select right column
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setSelectedColumn('right');
+        setSelectedIndex(Math.min(selectedIndex, rightFiles.length - 1));
         return;
       }
 
@@ -258,13 +313,13 @@ const App: React.FC = () => {
         }
       } else if (e.key === 'Enter' && selectedIndex >= 0) {
         e.preventDefault();
-        handleFileDoubleClick(files[selectedIndex]);
+        handleFileDoubleClick(selectedColumn, files[selectedIndex]);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [files, selectedIndex, quickLookFile, handleFileDoubleClick, navigateUp]);
+  }, [leftFiles, rightFiles, selectedColumn, selectedIndex, quickLookFile, handleFileDoubleClick, navigateUp]);
 
   // Load home directory on startup
   useEffect(() => {
@@ -319,20 +374,37 @@ const App: React.FC = () => {
         </button>
       </div>
 
-      <FileList
-        files={files}
-        selectedIndex={selectedIndex}
-        loading={loading}
-        scanMode={scanMode}
-        scanning={scanning}
-        onFileClick={handleFileClick}
-        onFileDoubleClick={handleFileDoubleClick}
-      />
+      <div className="two-column-container">
+        <div className="column left-column">
+          <div className="column-header">{leftPath || 'Parent'}</div>
+          <FileList
+            files={leftFiles}
+            selectedIndex={selectedColumn === 'left' ? selectedIndex : -1}
+            loading={loadingLeft}
+            scanMode={scanMode}
+            scanning={false}
+            onFileClick={(index) => handleFileClick('left', index)}
+            onFileDoubleClick={(file) => handleFileDoubleClick('left', file)}
+          />
+        </div>
+        <div className="column right-column">
+          <div className="column-header">{rightPath || 'Current'}</div>
+          <FileList
+            files={rightFiles}
+            selectedIndex={selectedColumn === 'right' ? selectedIndex : -1}
+            loading={loadingRight}
+            scanMode={false}
+            scanning={scanning}
+            onFileClick={(index) => handleFileClick('right', index)}
+            onFileDoubleClick={(file) => handleFileDoubleClick('right', file)}
+          />
+        </div>
+      </div>
 
       {quickLookFile && (
         <QuickLook
           file={quickLookFile}
-          files={files}
+          files={selectedColumn === 'left' ? leftFiles : rightFiles}
           currentIndex={selectedIndex}
           onClose={closeQuickLook}
           onNavigate={handleQuickLookNavigate}

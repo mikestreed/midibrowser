@@ -42,9 +42,16 @@ const FileListItem: React.FC<FileListItemProps> = ({
       const buffer = await ipcRenderer.invoke('read-file', file.path);
       const midi = new Midi(buffer);
 
+      // Extract tempo from MIDI file
+      // Tempo is in BPM (beats per minute)
+      let tempo = midi.header.tempos && midi.header.tempos.length > 0
+        ? Math.round(midi.header.tempos[0].bpm)
+        : undefined;
+
       setMetadata({
         duration: midi.duration,
-        trackCount: midi.tracks.length
+        trackCount: midi.tracks.length,
+        tempo: tempo
       });
     } catch (error) {
       console.error('Failed to load MIDI metadata:', error);
@@ -91,9 +98,15 @@ const FileListItem: React.FC<FileListItemProps> = ({
           : (metadata && metadata.duration > 0 ? formatDuration(metadata.duration) : (file.size === 0 ? '☁️' : ''))
         }
       </td>
-      <td className="track-count">
+      <td className="tempo">
         {scanMode
           ? (file.fileCount ? file.fileCount : '')
+          : (metadata && metadata.tempo ? metadata.tempo : '')
+        }
+      </td>
+      <td className="track-count">
+        {scanMode
+          ? ''
           : (metadata && metadata.trackCount > 0 ? metadata.trackCount : '')
         }
       </td>

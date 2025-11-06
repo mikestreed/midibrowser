@@ -12,4 +12,5 @@ export interface FileEntry {
 export interface MidiMetadata {
   duration: number; // in seconds
   trackCount: number;
+  tempo?: number; // BPM
 }
