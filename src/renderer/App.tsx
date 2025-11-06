@@ -372,7 +372,7 @@ const App: React.FC = () => {
         return;
       }
 
-      // - key: remove the last green circle emoji if present
+      // - key: remove the last character from filename
       if (e.key === '-' && selectedIndex >= 0) {
         e.preventDefault();
         const file = files[selectedIndex];
@@ -382,11 +382,10 @@ const App: React.FC = () => {
           const nameWithoutExt = lastDot > 0 ? file.name.substring(0, lastDot) : file.name;
           const ext = lastDot > 0 ? file.name.substring(lastDot) : '';
 
-          // Remove the last green circle if present
-          // Use Array.from to properly handle multi-byte emoji characters
-          if (nameWithoutExt.endsWith('🟢')) {
+          // Remove the last character if there are any characters
+          if (nameWithoutExt.length > 0) {
             const chars = Array.from(nameWithoutExt);
-            chars.pop(); // Remove last character (the emoji)
+            chars.pop(); // Remove last character
             const newName = chars.join('') + ext;
             const result = await ipcRenderer.invoke('rename-file', file.path, newName);
             if (result.success) {
