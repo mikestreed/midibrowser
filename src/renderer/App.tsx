@@ -359,20 +359,36 @@ const App: React.FC = () => {
           const nameWithoutExt = lastDot > 0 ? file.name.substring(0, lastDot) : file.name;
           const ext = lastDot > 0 ? file.name.substring(lastDot) : '';
 
-          // Toggle favorite - remove if already has emoji, add if doesn't
-          let newName;
-          if (nameWithoutExt.endsWith('🟢')) {
-            // Remove the emoji
-            newName = nameWithoutExt.slice(0, -1) + ext;
-          } else {
-            // Add the emoji
-            newName = nameWithoutExt + '🟢' + ext;
-          }
+          // Always add a green circle
+          const newName = nameWithoutExt + '🟢' + ext;
 
           const result = await ipcRenderer.invoke('rename-file', file.path, newName);
           if (result.success) {
             // Reload the current directory
             loadDirectory(currentPath);
+          }
+        }
+        return;
+      }
+
+      // - key: remove the last green circle emoji if present
+      if (e.key === '-' && selectedIndex >= 0) {
+        e.preventDefault();
+        const file = files[selectedIndex];
+        if (!file.isDirectory && (file.isMidi || file.isAudio)) {
+          // Extract name and extension
+          const lastDot = file.name.lastIndexOf('.');
+          const nameWithoutExt = lastDot > 0 ? file.name.substring(0, lastDot) : file.name;
+          const ext = lastDot > 0 ? file.name.substring(lastDot) : '';
+
+          // Remove the last green circle if present
+          if (nameWithoutExt.endsWith('🟢')) {
+            const newName = nameWithoutExt.slice(0, -1) + ext;
+            const result = await ipcRenderer.invoke('rename-file', file.path, newName);
+            if (result.success) {
+              // Reload the current directory
+              loadDirectory(currentPath);
+            }
           }
         }
         return;

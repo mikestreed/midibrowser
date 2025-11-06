@@ -88,9 +88,12 @@ const FileListItem: React.FC<FileListItemProps> = ({
   const handleDragStart = (e: React.DragEvent) => {
     // Enable dragging files out of the app to Finder/desktop
     e.dataTransfer.effectAllowed = 'copyMove';
-    e.dataTransfer.setData('text/plain', file.path);
 
-    // For Electron, set the file path for native drag
+    // Use custom MIME type for internal drags to avoid creating text clippings
+    // when dragging out to Finder/desktop
+    e.dataTransfer.setData('application/x-midibrowser-filepath', file.path);
+
+    // For Electron, set the file path for native drag to Finder/desktop
     const { ipcRenderer } = window.require('electron');
     ipcRenderer.send('ondragstart', file.path);
   };
@@ -120,7 +123,7 @@ const FileListItem: React.FC<FileListItemProps> = ({
     }
 
     // Check if this is an internal drag (moving files)
-    const sourcePath = e.dataTransfer.getData('text/plain');
+    const sourcePath = e.dataTransfer.getData('application/x-midibrowser-filepath');
     if (sourcePath && sourcePath !== file.path && onFileMove) {
       // This is an internal file move, handle it here
       e.preventDefault();
