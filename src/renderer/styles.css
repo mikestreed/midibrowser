@@ -71,6 +71,31 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+.breadcrumb-root {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.breadcrumb-root:hover {
+  color: #0066ff;
+}
+
+.breadcrumb-separator {
+  margin: 0 4px;
+  color: #999;
+}
+
+.breadcrumb-segment {
+  cursor: pointer;
+}
+
+.breadcrumb-segment:hover {
+  color: #0066ff;
+  text-decoration: underline;
 }
 
 .choose-folder-button {

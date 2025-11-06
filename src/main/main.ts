@@ -8,6 +8,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    title: 'MIDI Browser',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false

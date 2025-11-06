@@ -79,6 +79,24 @@ const App: React.FC = () => {
     }
   }, [navigateToPath]);
 
+  const navigateUp = useCallback(() => {
+    if (!currentPath) return;
+
+    const pathParts = currentPath.split('/').filter(Boolean);
+    if (pathParts.length > 0) {
+      pathParts.pop(); // Remove last segment
+      const parentPath = '/' + pathParts.join('/');
+      navigateToPath(parentPath || '/');
+    }
+  }, [currentPath, navigateToPath]);
+
+  const handleBreadcrumbClick = useCallback((index: number) => {
+    const pathParts = currentPath.split('/').filter(Boolean);
+    const newPathParts = pathParts.slice(0, index + 1);
+    const newPath = '/' + newPathParts.join('/');
+    navigateToPath(newPath);
+  }, [currentPath, navigateToPath]);
+
   const closeQuickLook = useCallback(() => {
     setQuickLookFile(null);
   }, []);
@@ -157,6 +175,13 @@ const App: React.FC = () => {
       // Don't handle shortcuts when Quick Look is open (it handles its own)
       if (quickLookFile) return;
 
+      // Cmd+Up to go up one folder level (Mac)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowUp') {
+        e.preventDefault();
+        navigateUp();
+        return;
+      }
+
       if (e.key === 'ArrowUp') {
         e.preventDefault();
         setSelectedIndex((prev) => Math.max(-1, prev - 1));
@@ -177,7 +202,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [files, selectedIndex, quickLookFile, handleFileDoubleClick]);
+  }, [files, selectedIndex, quickLookFile, handleFileDoubleClick, navigateUp]);
 
   // Load home directory on startup
   useEffect(() => {
@@ -208,7 +233,22 @@ const App: React.FC = () => {
             →
           </button>
         </div>
-        <div className="path-display">{currentPath}</div>
+        <div className="path-display">
+          <span className="breadcrumb-root" onClick={() => navigateToPath('/')}>
+            /
+          </span>
+          {currentPath.split('/').filter(Boolean).map((segment, index) => (
+            <span key={index}>
+              <span className="breadcrumb-separator">/</span>
+              <span
+                className="breadcrumb-segment"
+                onClick={() => handleBreadcrumbClick(index)}
+              >
+                {segment}
+              </span>
+            </span>
+          ))}
+        </div>
         <button className="choose-folder-button" onClick={handleChooseFolder}>
           Choose Folder
         </button>
