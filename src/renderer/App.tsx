@@ -24,27 +24,46 @@ const App: React.FC = () => {
   const [scanResults, setScanResults] = useState<FileEntry[]>([]);
   const [scanRootPath, setScanRootPath] = useState<string>('');
 
-  const loadDirectory = useCallback(async (path: string) => {
-    setScanMode(false);
-    setLoadingLeft(true);
+  const loadDirectory = useCallback(async (path: string, keepScanResults: boolean = false) => {
+    setLoadingLeft(!keepScanResults);
     setLoadingRight(true);
 
     try {
-      // Load parent folder for left column
-      const pathParts = path.split('/').filter(Boolean);
-      let parentPath = '/';
-      if (pathParts.length > 0) {
-        pathParts.pop();
-        parentPath = '/' + pathParts.join('/');
-      }
+      // If we have scan results and should keep them, don't load parent folder
+      if (!keepScanResults || scanResults.length === 0) {
+        setScanMode(false);
 
-      // Load parent directory
-      const parentEntries: FileEntry[] = await ipcRenderer.invoke('read-directory', parentPath);
-      parentEntries.sort((a, b) => {
-        if (a.isDirectory && !b.isDirectory) return -1;
-        if (!a.isDirectory && b.isDirectory) return 1;
-        return a.name.localeCompare(b.name);
-      });
+        // Load parent folder for left column
+        const pathParts = path.split('/').filter(Boolean);
+        let parentPath = '/';
+        if (pathParts.length > 0) {
+          pathParts.pop();
+          parentPath = '/' + pathParts.join('/');
+        }
+
+        // Load parent directory
+        const parentEntries: FileEntry[] = await ipcRenderer.invoke('read-directory', parentPath);
+        parentEntries.sort((a, b) => {
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+        // Calculate folder stats for directories in parent
+        const statsPromises = parentEntries.map(async (entry) => {
+          if (entry.isDirectory) {
+            const stats = await ipcRenderer.invoke('get-folder-stats', entry.path);
+            entry.size = stats.size;
+            entry.fileCount = stats.fileCount;
+          }
+          return entry;
+        });
+
+        const parentWithStats = await Promise.all(statsPromises);
+
+        setLeftFiles(parentWithStats);
+        setLeftPath(parentPath);
+      }
 
       // Load current directory
       const entries: FileEntry[] = await ipcRenderer.invoke('read-directory', path);
@@ -54,9 +73,7 @@ const App: React.FC = () => {
         return a.name.localeCompare(b.name);
       });
 
-      setLeftFiles(parentEntries);
       setRightFiles(entries);
-      setLeftPath(parentPath);
       setRightPath(path);
       setCurrentPath(path);
       setSelectedIndex(-1);
@@ -77,7 +94,7 @@ const App: React.FC = () => {
       setLoadingRight(false);
       setLoading(false);
     }
-  }, []);
+  }, [scanResults]);
 
   const handleScan = useCallback(async () => {
     setScanning(true);
@@ -145,12 +162,13 @@ const App: React.FC = () => {
 
     // Single click on folder in left column should navigate
     if (column === 'left' && file.isDirectory) {
-      navigateToPath(file.path);
+      // If in scan mode, keep scan results in left column
+      loadDirectory(file.path, scanMode);
     } else {
       setSelectedColumn(column);
       setSelectedIndex(index);
     }
-  }, [leftFiles, rightFiles, navigateToPath]);
+  }, [leftFiles, rightFiles, scanMode, loadDirectory]);
 
   const handleFileDoubleClick = useCallback((column: 'left' | 'right', file: FileEntry) => {
     if (file.isDirectory) {

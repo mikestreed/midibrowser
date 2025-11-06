@@ -378,8 +378,35 @@ ipcMain.handle('get-file-info', async (event, filePath: string) => {
 ipcMain.on('ondragstart', (event, filePath: string) => {
   event.sender.startDrag({
     file: filePath,
-    icon: path.join(__dirname, 'icon.png') // Optional: add drag icon
+    icon: '' // Empty icon to avoid file not found error
   });
+});
+
+// Get folder stats (size and MIDI file count)
+ipcMain.handle('get-folder-stats', async (event, folderPath: string) => {
+  try {
+    const entries = await fs.readdir(folderPath, { withFileTypes: true });
+    let totalSize = 0;
+    let midiFileCount = 0;
+
+    for (const entry of entries) {
+      const fullPath = path.join(folderPath, entry.name);
+
+      if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (['.mid', '.midi'].includes(ext)) {
+          const stats = await fs.stat(fullPath);
+          totalSize += stats.size;
+          midiFileCount++;
+        }
+      }
+    }
+
+    return { size: totalSize, fileCount: midiFileCount };
+  } catch (error) {
+    console.error('Error getting folder stats:', error);
+    return { size: 0, fileCount: 0 };
+  }
 });
 
 // Move file from one location to another

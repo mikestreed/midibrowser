@@ -168,6 +168,11 @@ body {
 .left-column {
   flex: 0 0 25%;
   border-right: 1px solid #d1d1d1;
+  background: #bbbbbb;
+}
+
+.left-column .file-list-container {
+  background: #bbbbbb;
 }
 
 .right-column {
