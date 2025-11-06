@@ -388,7 +388,6 @@ const App: React.FC = () => {
 
       <div className="two-column-container">
         <div className="column left-column">
-          <div className="column-header">{leftPath || 'Parent'}</div>
           <FileList
             files={leftFiles}
             selectedIndex={selectedColumn === 'left' ? selectedIndex : -1}
@@ -402,7 +401,6 @@ const App: React.FC = () => {
           />
         </div>
         <div className="column right-column">
-          <div className="column-header">{rightPath || 'Current'}</div>
           <FileList
             files={rightFiles}
             selectedIndex={selectedColumn === 'right' ? selectedIndex : -1}
