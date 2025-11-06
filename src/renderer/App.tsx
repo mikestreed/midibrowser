@@ -140,9 +140,17 @@ const App: React.FC = () => {
   }, [historyIndex, pathHistory, loadDirectory]);
 
   const handleFileClick = useCallback((column: 'left' | 'right', index: number) => {
-    setSelectedColumn(column);
-    setSelectedIndex(index);
-  }, []);
+    const files = column === 'left' ? leftFiles : rightFiles;
+    const file = files[index];
+
+    // Single click on folder in left column should navigate
+    if (column === 'left' && file.isDirectory) {
+      navigateToPath(file.path);
+    } else {
+      setSelectedColumn(column);
+      setSelectedIndex(index);
+    }
+  }, [leftFiles, rightFiles, navigateToPath]);
 
   const handleFileDoubleClick = useCallback((column: 'left' | 'right', file: FileEntry) => {
     if (file.isDirectory) {

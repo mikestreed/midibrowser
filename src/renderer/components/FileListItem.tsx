@@ -143,24 +143,28 @@ const FileListItem: React.FC<FileListItemProps> = ({
           <span>{file.name}</span>
         </div>
       </td>
-      <td className="file-length">
-        {scanMode
-          ? (file.size ? formatSize(file.size) : '')
-          : (metadata && metadata.duration > 0 ? formatDuration(metadata.duration) : (file.size === 0 ? '☁️' : ''))
-        }
-      </td>
-      <td className="tempo">
-        {scanMode
-          ? (file.fileCount ? file.fileCount : '')
-          : (metadata && metadata.tempo ? metadata.tempo : '')
-        }
-      </td>
-      <td className="track-count">
-        {scanMode
-          ? ''
-          : (metadata && metadata.trackCount > 0 ? metadata.trackCount : '')
-        }
-      </td>
+      {column === 'left' ? (
+        <>
+          <td className="file-size">
+            {file.size ? formatSize(file.size) : ''}
+          </td>
+          <td className="file-count">
+            {file.fileCount ? file.fileCount : ''}
+          </td>
+        </>
+      ) : (
+        <>
+          <td className="file-length">
+            {metadata && metadata.duration > 0 ? formatDuration(metadata.duration) : (file.size === 0 ? '☁️' : '')}
+          </td>
+          <td className="tempo">
+            {metadata && metadata.tempo ? metadata.tempo : ''}
+          </td>
+          <td className="track-count">
+            {metadata && metadata.trackCount > 0 ? metadata.trackCount : ''}
+          </td>
+        </>
+      )}
     </tr>
   );
 };
