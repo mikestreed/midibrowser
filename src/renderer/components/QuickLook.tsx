@@ -199,8 +199,8 @@ const QuickLook: React.FC<QuickLookProps> = ({ file, files, currentIndex, onClos
   }, [duration]);
 
   const loadMidiFile = useCallback(async () => {
-    // Use retry logic for Dropbox online-only files
-    const buffer = await ipcRenderer.invoke('read-file-with-retry', file.path, 5);
+    // Use retry logic for Dropbox online-only files (10 retries with fs.open to trigger Dropbox)
+    const buffer = await ipcRenderer.invoke('read-file-with-retry', file.path);
     const midi = new Midi(buffer);
 
     midiDataRef.current = midi;

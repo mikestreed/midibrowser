@@ -154,8 +154,9 @@ ipcMain.handle('read-file', async (event, filePath: string) => {
 });
 
 // Read file with retry for Dropbox online-only files
-ipcMain.handle('read-file-with-retry', async (event, filePath: string, maxRetries: number = 5) => {
+ipcMain.handle('read-file-with-retry', async (event, filePath: string, maxRetries: number = 10) => {
   let lastError: any;
+  let fileHandle: any = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -163,16 +164,21 @@ ipcMain.handle('read-file-with-retry', async (event, filePath: string, maxRetrie
       const stats = await fs.stat(filePath);
 
       // If file is 0 bytes, it's likely a Dropbox online-only file
-      if (stats.size === 0 && attempt === 0) {
-        console.log(`File is 0 bytes (online-only), attempting to trigger sync: ${filePath}`);
-        // Try to read it anyway - this triggers Dropbox to download
+      if (stats.size === 0) {
+        console.log(`File is 0 bytes (online-only) on attempt ${attempt + 1}, triggering sync: ${filePath}`);
+
+        // Open file descriptor to trigger Dropbox Smart Sync download
         try {
-          await fs.readFile(filePath);
+          fileHandle = await fs.open(filePath, 'r');
+          await fileHandle.close();
         } catch (e) {
-          // Expected to fail on first try
+          console.log(`Error opening file descriptor: ${e}`);
         }
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Wait progressively longer for download to start
+        const delay = Math.min(1000 + (attempt * 500), 5000);
+        console.log(`Waiting ${delay}ms for Dropbox to download file...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
 
@@ -180,7 +186,7 @@ ipcMain.handle('read-file-with-retry', async (event, filePath: string, maxRetrie
       if (stats.size > 0) {
         const buffer = await fs.readFile(filePath);
         if (buffer.length > 0) {
-          console.log(`Successfully read file on attempt ${attempt + 1}: ${filePath}`);
+          console.log(`Successfully read file (${buffer.length} bytes) on attempt ${attempt + 1}: ${filePath}`);
           return buffer;
         }
       }
@@ -289,15 +295,20 @@ ipcMain.handle('presync-midi-files', async (event, dirPath: string) => {
         if (['.mid', '.midi'].includes(ext)) {
           const fullPath = path.join(dirPath, entry.name);
 
-          // Trigger sync by attempting to read (don't wait for it)
+          // Trigger sync by opening file descriptor (don't wait for it)
           syncPromises.push(
             (async () => {
               try {
                 const stats = await fs.stat(fullPath);
                 if (stats.size === 0) {
                   console.log(`Pre-syncing MIDI file: ${entry.name}`);
-                  // Just open and close to trigger Dropbox sync
-                  await fs.readFile(fullPath);
+                  // Open file descriptor to trigger Dropbox Smart Sync
+                  try {
+                    const fh = await fs.open(fullPath, 'r');
+                    await fh.close();
+                  } catch (e) {
+                    // Ignore open errors
+                  }
                 }
               } catch (e) {
                 // Ignore errors during pre-sync

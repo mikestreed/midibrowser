@@ -73,12 +73,15 @@ body {
   display: flex;
   align-items: center;
   -webkit-app-region: no-drag;
-  justify-content: flex-end;
-  direction: rtl;
+  justify-content: flex-start;
+  min-width: 0;
 }
 
 .path-display > span {
-  direction: ltr;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 .breadcrumb-root {
