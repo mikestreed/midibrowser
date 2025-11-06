@@ -23,6 +23,38 @@ const App: React.FC = () => {
   const [scanning, setScanning] = useState<boolean>(false);
   const [scanResults, setScanResults] = useState<FileEntry[]>([]);
   const [scanRootPath, setScanRootPath] = useState<string>('');
+  const [favoritesFirst, setFavoritesFirst] = useState<boolean>(false);
+
+  // Helper function to check if a file is marked as favorite
+  const isFavorite = (fileName: string): boolean => {
+    const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+    return nameWithoutExt.endsWith('🟢');
+  };
+
+  // Helper function to filter and sort files
+  const filterAndSortFiles = useCallback((files: FileEntry[], sortFavoritesFirst: boolean): FileEntry[] => {
+    // Filter out files starting with 'xxxxx'
+    const filtered = files.filter(file => !file.name.startsWith('xxxxx'));
+
+    // Sort files
+    filtered.sort((a, b) => {
+      // If favorites sorting is enabled
+      if (sortFavoritesFirst) {
+        const aIsFav = !a.isDirectory && isFavorite(a.name);
+        const bIsFav = !b.isDirectory && isFavorite(b.name);
+
+        if (aIsFav && !bIsFav) return -1;
+        if (!aIsFav && bIsFav) return 1;
+      }
+
+      // Directories first, then alphabetical
+      if (a.isDirectory && !b.isDirectory) return -1;
+      if (!a.isDirectory && b.isDirectory) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return filtered;
+  }, []);
 
   const loadDirectory = useCallback(async (path: string, keepScanResults: boolean = false) => {
     setLoadingLeft(!keepScanResults);
@@ -43,11 +75,6 @@ const App: React.FC = () => {
 
         // Load parent directory
         const parentEntries: FileEntry[] = await ipcRenderer.invoke('read-directory', parentPath);
-        parentEntries.sort((a, b) => {
-          if (a.isDirectory && !b.isDirectory) return -1;
-          if (!a.isDirectory && b.isDirectory) return 1;
-          return a.name.localeCompare(b.name);
-        });
 
         // Calculate folder stats for directories in parent
         const statsPromises = parentEntries.map(async (entry) => {
@@ -61,19 +88,18 @@ const App: React.FC = () => {
 
         const parentWithStats = await Promise.all(statsPromises);
 
-        setLeftFiles(parentWithStats);
+        // Filter and sort parent files
+        const sortedParent = filterAndSortFiles(parentWithStats, favoritesFirst);
+        setLeftFiles(sortedParent);
         setLeftPath(parentPath);
       }
 
       // Load current directory
       const entries: FileEntry[] = await ipcRenderer.invoke('read-directory', path);
-      entries.sort((a, b) => {
-        if (a.isDirectory && !b.isDirectory) return -1;
-        if (!a.isDirectory && b.isDirectory) return 1;
-        return a.name.localeCompare(b.name);
-      });
 
-      setRightFiles(entries);
+      // Filter and sort current directory files
+      const sortedEntries = filterAndSortFiles(entries, favoritesFirst);
+      setRightFiles(sortedEntries);
       setRightPath(path);
       setCurrentPath(path);
       setSelectedIndex(-1);
@@ -94,7 +120,7 @@ const App: React.FC = () => {
       setLoadingRight(false);
       setLoading(false);
     }
-  }, [scanResults]);
+  }, [scanResults, favoritesFirst, filterAndSortFiles]);
 
   const handleScan = useCallback(async () => {
     setScanning(true);
@@ -119,7 +145,8 @@ const App: React.FC = () => {
       setScanResults(scanEntries);
       setScanRootPath(currentPath);
       // Scan results go to LEFT column, RIGHT column becomes empty
-      setLeftFiles(scanEntries);
+      const sortedScanEntries = filterAndSortFiles(scanEntries, favoritesFirst);
+      setLeftFiles(sortedScanEntries);
       setRightFiles([]);
       setLeftPath(currentPath + ' (scan results)');
       setRightPath('');
@@ -130,7 +157,7 @@ const App: React.FC = () => {
     } finally {
       setScanning(false);
     }
-  }, [currentPath]);
+  }, [currentPath, filterAndSortFiles, favoritesFirst]);
 
   const navigateToPath = useCallback((path: string) => {
     const newHistory = pathHistory.slice(0, historyIndex + 1);
@@ -301,11 +328,55 @@ const App: React.FC = () => {
 
   // Keyboard shortcuts
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
       // Don't handle shortcuts when Quick Look is open (it handles its own)
       if (quickLookFile) return;
 
       const files = selectedColumn === 'left' ? leftFiles : rightFiles;
+
+      // Backspace or Delete: prefix filename with 'xxxxx' to hide
+      if ((e.key === 'Backspace' || e.key === 'Delete') && selectedIndex >= 0) {
+        e.preventDefault();
+        const file = files[selectedIndex];
+        if (!file.isDirectory && (file.isMidi || file.isAudio)) {
+          const newName = 'xxxxx' + file.name;
+          const result = await ipcRenderer.invoke('rename-file', file.path, newName);
+          if (result.success) {
+            // Reload the current directory
+            loadDirectory(currentPath);
+          }
+        }
+        return;
+      }
+
+      // = or + key: add green circle emoji to mark as favorite
+      if ((e.key === '=' || e.key === '+') && selectedIndex >= 0) {
+        e.preventDefault();
+        const file = files[selectedIndex];
+        if (!file.isDirectory && (file.isMidi || file.isAudio)) {
+          // Extract name and extension
+          const lastDot = file.name.lastIndexOf('.');
+          const nameWithoutExt = lastDot > 0 ? file.name.substring(0, lastDot) : file.name;
+          const ext = lastDot > 0 ? file.name.substring(lastDot) : '';
+
+          // Toggle favorite - remove if already has emoji, add if doesn't
+          let newName;
+          if (nameWithoutExt.endsWith('🟢')) {
+            // Remove the emoji
+            newName = nameWithoutExt.slice(0, -1) + ext;
+          } else {
+            // Add the emoji
+            newName = nameWithoutExt + '🟢' + ext;
+          }
+
+          const result = await ipcRenderer.invoke('rename-file', file.path, newName);
+          if (result.success) {
+            // Reload the current directory
+            loadDirectory(currentPath);
+          }
+        }
+        return;
+      }
 
       // Escape to go back
       if (e.key === 'Escape') {
@@ -357,7 +428,19 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [leftFiles, rightFiles, selectedColumn, selectedIndex, quickLookFile, handleFileDoubleClick, navigateUp]);
+  }, [leftFiles, rightFiles, selectedColumn, selectedIndex, quickLookFile, handleFileDoubleClick, navigateUp, currentPath, loadDirectory]);
+
+  // Re-sort files when favorites toggle changes
+  useEffect(() => {
+    if (leftFiles.length > 0) {
+      const sortedLeft = filterAndSortFiles([...leftFiles], favoritesFirst);
+      setLeftFiles(sortedLeft);
+    }
+    if (rightFiles.length > 0) {
+      const sortedRight = filterAndSortFiles([...rightFiles], favoritesFirst);
+      setRightFiles(sortedRight);
+    }
+  }, [favoritesFirst]); // Only run when favoritesFirst changes
 
   // Load home directory on startup
   useEffect(() => {
@@ -409,6 +492,13 @@ const App: React.FC = () => {
         </button>
         <button className="scan-button" onClick={handleScan} disabled={scanning}>
           {scanning ? 'Scanning...' : 'SCAN'}
+        </button>
+        <button
+          className={`favorites-toggle-button ${favoritesFirst ? 'active' : ''}`}
+          onClick={() => setFavoritesFirst(!favoritesFirst)}
+          title="Sort favorites first"
+        >
+          🟢↑
         </button>
       </div>
 

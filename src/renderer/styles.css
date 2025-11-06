@@ -148,6 +148,26 @@ body {
   cursor: default;
 }
 
+.favorites-toggle-button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid #d1d1d1;
+  background: #fff;
+  cursor: pointer;
+  font-size: 16px;
+  margin-left: 8px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.favorites-toggle-button:hover {
+  background: #f0f0f0;
+}
+
+.favorites-toggle-button.active {
+  background: #d0f0d0;
+  border-color: #4caf50;
+}
+
 .scan-button:disabled:hover {
   background: #fff;
 }

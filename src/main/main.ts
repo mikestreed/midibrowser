@@ -433,3 +433,28 @@ ipcMain.handle('move-file', async (event, sourcePath: string, targetDir: string)
     return { success: false, error: error.message };
   }
 });
+
+// Rename file
+ipcMain.handle('rename-file', async (event, filePath: string, newName: string) => {
+  try {
+    const dir = path.dirname(filePath);
+    const newPath = path.join(dir, newName);
+
+    // Check if target already exists
+    try {
+      await fs.access(newPath);
+      throw new Error('A file with that name already exists');
+    } catch (err: any) {
+      // File doesn't exist, proceed with rename
+      if (err.code !== 'ENOENT') throw err;
+    }
+
+    // Rename the file
+    await fs.rename(filePath, newPath);
+    console.log(`Renamed file from ${filePath} to ${newPath}`);
+    return { success: true, newPath: newPath };
+  } catch (error: any) {
+    console.error('Error renaming file:', error);
+    return { success: false, error: error.message };
+  }
+});
