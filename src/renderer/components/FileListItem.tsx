@@ -111,19 +111,25 @@ const FileListItem: React.FC<FileListItemProps> = ({
   };
 
   const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
     setDragOver(false);
 
-    if (!file.isDirectory || column !== 'left') return;
-
-    const sourcePath = e.dataTransfer.getData('text/plain');
-    if (!sourcePath || sourcePath === file.path) return;
-
-    // Call the move handler if provided
-    if (onFileMove) {
-      onFileMove(sourcePath, file.path);
+    // Only handle drops on folders in the left column
+    if (!file.isDirectory || column !== 'left') {
+      // Let the event bubble up to the document handler for navigation
+      return;
     }
+
+    // Check if this is an internal drag (moving files)
+    const sourcePath = e.dataTransfer.getData('text/plain');
+    if (sourcePath && sourcePath !== file.path && onFileMove) {
+      // This is an internal file move, handle it here
+      e.preventDefault();
+      e.stopPropagation();
+      onFileMove(sourcePath, file.path);
+      return;
+    }
+
+    // If we get here, let the event bubble up
   };
 
   return (

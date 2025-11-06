@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { exec } from 'child_process';
@@ -374,9 +374,11 @@ ipcMain.handle('get-file-info', async (event, filePath: string) => {
 
 // Handle native drag and drop out of app
 ipcMain.on('ondragstart', (event, filePath: string) => {
+  // Create a simple 1x1 transparent icon to avoid file not found errors
+  const icon = nativeImage.createEmpty();
   event.sender.startDrag({
     file: filePath,
-    icon: '' // Empty icon to avoid file not found error
+    icon: icon
   });
 });
 
